@@ -50,12 +50,6 @@ type Client struct {
 
 // Read reads the underline data into the provided slice.
 func (c Client) Read() ([]byte, error) {
-	defer c.Metrics.Emit(
-		metrics.Message("Client.Read"),
-		metrics.WithID(c.ID),
-		metrics.With("network", c.NID),
-	)
-
 	if c.ReaderFunc == nil {
 		return nil, ErrReadNotAllowed
 	}
@@ -66,12 +60,6 @@ func (c Client) Read() ([]byte, error) {
 // Flush sends all accumulated message within clients buffer into
 // connection.
 func (c Client) Flush() error {
-	defer c.Metrics.Emit(
-		metrics.Message("Client.Flush"),
-		metrics.WithID(c.ID),
-		metrics.With("network", c.NID),
-	)
-
 	if c.FlushFunc == nil {
 		return ErrFlushNotAllowed
 	}
@@ -81,12 +69,6 @@ func (c Client) Flush() error {
 
 // Write writes provided data into connection without any deadline.
 func (c Client) Write(data []byte) (int, error) {
-	defer c.Metrics.Emit(
-		metrics.WithID(c.ID),
-		metrics.Message("Client.Write"),
-		metrics.With("network", c.NID),
-	)
-
 	if c.WriteFunc == nil {
 		return 0, ErrWriteNotAllowed
 	}

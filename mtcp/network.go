@@ -23,8 +23,10 @@ const (
 	maxActorWait  = 10 * time.Second
 	maxWorkWait   = 500 * time.Millisecond
 	writeDeadline = 3 * time.Second
-	maxWriteSize  = (1024 * 4)
-	maxReadSize   = (1024 * 4)
+	minBufferSize = 512
+	minWriteSize  = 1024 * 512
+	maxWriteSize  = (1024 * 1024)
+	maxReadSize   = (1024 * 1024)
 )
 
 // errors ...
@@ -59,18 +61,10 @@ type networkConn struct {
 	head *message
 	tail *message
 	bu   sync.Mutex
-	bw   *bytes.Buffer
+	bw   *WriteBuffer
 }
 
 func (nc *networkConn) write(cm mnet.Client, data []byte) (int, error) {
-
-	defer nc.network.Metrics.Emit(
-		metrics.Message("networkConn.write"),
-
-		metrics.WithID(nc.id),
-		metrics.With("network_id", nc.network.ID),
-	)
-
 	nc.mu.Lock()
 	if nc.Err != nil {
 		nc.mu.Unlock()
@@ -80,10 +74,13 @@ func (nc *networkConn) write(cm mnet.Client, data []byte) (int, error) {
 
 	nc.bu.Lock()
 	defer nc.bu.Unlock()
-	return nc.bw.Write(data)
+	if nc.bw != nil {
+		return nc.bw.Write(data)
+	}
+	return 0, nil
 }
 
-func (nc *networkConn) closeConn(cm mnet.Client) error {
+func (nc *networkConn) closeConnection() error {
 	nc.mu.Lock()
 	if nc.close == nil {
 		nc.mu.Unlock()
@@ -96,23 +93,24 @@ func (nc *networkConn) closeConn(cm mnet.Client) error {
 	nc.network.cu.Unlock()
 
 	var err error
-	nc.mu.Lock()
 	select {
 	case nc.close <- struct{}{}:
 	default:
 	}
 
+	nc.mu.Lock()
 	if nc.conn != nil {
 		err = nc.conn.Close()
+		nc.conn = nil
+		nc.close = nil
 	}
 	nc.mu.Unlock()
+	return err
+}
 
+func (nc *networkConn) closeConn(cm mnet.Client) error {
+	err := nc.closeConnection()
 	nc.worker.Wait()
-
-	nc.mu.Lock()
-	nc.close = nil
-	nc.conn = nil
-	nc.mu.Unlock()
 
 	nc.bu.Lock()
 	nc.bw = nil
@@ -163,7 +161,6 @@ func (nc *networkConn) getMessage() ([]byte, error) {
 }
 
 func (nc *networkConn) addMessage(m *message) {
-
 	nc.mu.Lock()
 	defer nc.mu.Unlock()
 
@@ -196,25 +193,28 @@ func (nc *networkConn) flushloop() {
 			}
 
 			nc.mu.Lock()
-			cn := nc.conn
+			if nc.conn == nil {
+				nc.mu.Unlock()
+				return
+			}
 			nc.mu.Unlock()
 
 			nc.bu.Lock()
-			data := nc.bw.Bytes()
-			nc.bw.Reset()
+			err := nc.bw.Flush()
 			nc.bu.Unlock()
 
-			header := make([]byte, 2)
-			binary.BigEndian.PutUint16(header, uint16(len(data)))
-			header = append(header, data...)
-
-			if _, err := cn.Write(header); err != nil {
+			if err != nil {
 				nc.network.Metrics.Emit(
 					metrics.Error(err),
 					metrics.WithID(nc.id),
 					metrics.Message("networkConn.flushloop"),
 					metrics.With("network", nc.network.ID),
 				)
+
+				// Dealing with slow consumer, close it.
+				if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+					nc.closeConnection()
+				}
 			}
 		}
 	}
@@ -250,24 +250,29 @@ func (nc *networkConn) processMessage(data []byte) {
 		}
 
 		next := nc.scratch.Next(nextSize)
-		nc.addMessage(&message{data: next[:nextSize]})
+		nc.addMessage(&message{data: next})
 	}
 }
 
 // readLoop handles the necessary operation of reading data from the
 // underline connection.
 func (nc *networkConn) readLoop() {
-	nc.lastRead = 512
-	incoming := make([]byte, 512)
-
 	defer nc.worker.Done()
 
 	nc.mu.Lock()
+	if nc.conn == nil {
+		return
+	}
 	cn := nc.conn
 	nc.mu.Unlock()
 
+	var twiceBig int
+	incoming := make([]byte, minBufferSize, minWriteSize)
+	lastSize := minWriteSize
+
 	for {
 		n, err := cn.Read(incoming)
+
 		if err != nil {
 			nc.network.Metrics.Emit(
 				metrics.Error(err),
@@ -279,6 +284,8 @@ func (nc *networkConn) readLoop() {
 			nc.mu.Lock()
 			nc.Err = err
 			nc.mu.Unlock()
+
+			nc.closeConnection()
 			return
 		}
 
@@ -288,25 +295,13 @@ func (nc *networkConn) readLoop() {
 		}
 
 		// Send into go-routine (critical path)?
-		go nc.processMessage(incoming[:n])
+		nc.processMessage(incoming[:n])
 
-		if n > nc.lastRead && n < 512 {
-			incoming = make([]byte, 512)
+		twiceBig = (lastSize * 2)
+		if n > lastSize && n < maxWriteSize {
+			incoming = make([]byte, twiceBig, maxWriteSize)
+			lastSize = twiceBig
 		}
-
-		if n > nc.lastRead && n > 512 {
-			incoming = make([]byte, n)
-		}
-
-		if n < nc.lastRead && n > 512 {
-			incoming = make([]byte, nc.lastRead/2)
-		}
-
-		if n < nc.lastRead && n < 512 {
-			incoming = make([]byte, nc.lastRead)
-		}
-
-		nc.lastRead = n
 	}
 }
 
@@ -453,6 +448,7 @@ func (n *Network) runStream(stream melon.ConnReadWriteCloser) {
 
 		go func(conn net.Conn) {
 			uuid := uuid.NewV4().String()
+
 			client := mnet.Client{
 				ID:         uuid,
 				NID:        n.ID,
@@ -475,15 +471,17 @@ func (n *Network) runStream(stream melon.ConnReadWriteCloser) {
 			cn.ctx = n.ctx
 			cn.network = n
 			cn.conn = conn
-			cn.bw = bytes.NewBuffer(nil)
+
 			cn.flush = make(chan struct{}, 10)
 			cn.close = make(chan struct{}, 0)
 			client.ReaderFunc = cn.read
 			client.WriteFunc = cn.write
 			client.CloseFunc = cn.closeConn
 			client.FlushFunc = cn.flushAll
+			cn.bw = NewWriteBuffer(cn.conn, maxWriteSize)
 
 			cn.worker.Add(2)
+
 			go cn.readLoop()
 			go cn.flushloop()
 
