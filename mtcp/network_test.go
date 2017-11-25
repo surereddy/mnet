@@ -77,7 +77,6 @@ func TestNonTLSNetwork(t *testing.T) {
 
 func BenchmarkNonTLSNetworkWrite(b *testing.B) {
 	b.StopTimer()
-	b.StartTimer()
 
 	ctx := context.New()
 	netw, err := createNewNetwork(ctx, ":5050", nil)
@@ -90,26 +89,25 @@ func BenchmarkNonTLSNetworkWrite(b *testing.B) {
 		tests.FailedWithError(err, "Should have successfully connected to network")
 	}
 
-	total := 1000000
 	payload := "pub help"
 
-	for i := 0; i < total; i++ {
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
 		writeMessage(conn, payload)
-		if i%1000 == 0 {
+		if i%100 == 0 {
 			time.Sleep(1 * time.Nanosecond)
 		}
 	}
 
+	b.StopTimer()
 	conn.Close()
 	ctx.Cancel()
 	netw.Wait()
 
-	b.StopTimer()
 }
 
 func BenchmarkNonTLSNetworkReadAndWrite(b *testing.B) {
 	b.StopTimer()
-	b.StartTimer()
 
 	ctx := context.New()
 	netw, err := createNewNetwork(ctx, ":5050", nil)
@@ -122,23 +120,22 @@ func BenchmarkNonTLSNetworkReadAndWrite(b *testing.B) {
 		tests.FailedWithError(err, "Should have successfully connected to network")
 	}
 
-	total := 10000
 	payload := "pub help"
-
-	for i := 0; i < total; i++ {
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
 		if err := writeMessage(conn, payload); err != nil {
 			readMessage(conn)
 		}
 		if i%100 == 0 {
 			time.Sleep(1 * time.Nanosecond)
 		}
-
-		conn.Close()
-		ctx.Cancel()
-		netw.Wait()
 	}
 
 	b.StopTimer()
+	conn.Close()
+	ctx.Cancel()
+	netw.Wait()
+
 }
 
 func readMessage(conn net.Conn) ([]byte, error) {
@@ -158,10 +155,7 @@ func readMessage(conn net.Conn) ([]byte, error) {
 	return data, nil
 }
 
-func writeMessage(w io.Writer, message string, d ...interface{}) error {
-	msg := fmt.Sprintf(message, d...)
-	// msg += "\r\n"
-
+func writeMessage(w io.Writer, msg string) error {
 	header := make([]byte, 2)
 	binary.BigEndian.PutUint16(header, uint16(len(msg)))
 	header = append(header, []byte(msg)...)
