@@ -95,12 +95,16 @@ func (nc *networkConn) closeConn(cm mnet.Client) error {
 	delete(nc.network.clients, nc.id)
 	nc.network.cu.Unlock()
 
+	var err error
 	nc.mu.Lock()
 	select {
 	case nc.close <- struct{}{}:
 	default:
 	}
-	err := nc.conn.Close()
+
+	if nc.conn != nil {
+		err = nc.conn.Close()
+	}
 	nc.mu.Unlock()
 
 	nc.worker.Wait()
@@ -423,7 +427,7 @@ func (n *Network) runStream(stream melon.ConnReadWriteCloser) {
 	initial := minSleep
 
 	for {
-		conn, err := stream.ReadConn()
+		newConn, err := stream.ReadConn()
 		if err != nil {
 			n.Metrics.Emit(metrics.WithID(n.ID), metrics.Error(err), metrics.Message("Failed to read new connection"))
 			if err == mlisten.ErrListenerClosed {
@@ -447,49 +451,49 @@ func (n *Network) runStream(stream melon.ConnReadWriteCloser) {
 			continue
 		}
 
-		uuid := uuid.NewV4().String()
-		client := mnet.Client{
-			ID:         uuid,
-			NID:        n.ID,
-			LocalAddr:  conn.LocalAddr(),
-			RemoteAddr: conn.RemoteAddr(),
-			Metrics:    n.Metrics,
-		}
+		go func(conn net.Conn) {
+			uuid := uuid.NewV4().String()
+			client := mnet.Client{
+				ID:         uuid,
+				NID:        n.ID,
+				LocalAddr:  conn.LocalAddr(),
+				RemoteAddr: conn.RemoteAddr(),
+				Metrics:    n.Metrics,
+			}
 
-		n.Metrics.Emit(
-			metrics.WithID(n.ID),
-			metrics.With("network", n.ID),
-			metrics.With("client_id", uuid),
-			metrics.Info("New Client Connection"),
-			metrics.With("local_addr", client.LocalAddr),
-			metrics.With("remote_addr", client.RemoteAddr),
-		)
+			n.Metrics.Emit(
+				metrics.WithID(n.ID),
+				metrics.With("network", n.ID),
+				metrics.With("client_id", uuid),
+				metrics.Info("New Client Connection"),
+				metrics.With("local_addr", client.LocalAddr),
+				metrics.With("remote_addr", client.RemoteAddr),
+			)
 
-		cn := new(networkConn)
-		cn.id = uuid
-		cn.ctx = n.ctx
-		cn.network = n
-		cn.conn = conn
-		cn.bw = bytes.NewBuffer(nil)
-		cn.flush = make(chan struct{}, 10)
-		cn.close = make(chan struct{}, 0)
-		client.ReaderFunc = cn.read
-		client.WriteFunc = cn.write
-		client.CloseFunc = cn.closeConn
-		client.FlushFunc = cn.flushAll
+			cn := new(networkConn)
+			cn.id = uuid
+			cn.ctx = n.ctx
+			cn.network = n
+			cn.conn = conn
+			cn.bw = bytes.NewBuffer(nil)
+			cn.flush = make(chan struct{}, 10)
+			cn.close = make(chan struct{}, 0)
+			client.ReaderFunc = cn.read
+			client.WriteFunc = cn.write
+			client.CloseFunc = cn.closeConn
+			client.FlushFunc = cn.flushAll
 
-		cn.worker.Add(2)
-		go cn.readLoop()
-		go cn.flushloop()
+			cn.worker.Add(2)
+			go cn.readLoop()
+			go cn.flushloop()
 
-		n.cu.Lock()
-		n.clients[uuid] = cn
-		n.cu.Unlock()
+			n.cu.Lock()
+			n.clients[uuid] = cn
+			n.cu.Unlock()
 
-		go func() {
 			if err := n.Handler(client); err != nil {
 				client.Close()
 			}
-		}()
+		}(newConn)
 	}
 }
