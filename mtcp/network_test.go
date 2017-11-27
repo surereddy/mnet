@@ -50,7 +50,8 @@ func TestNonTLSNetwork(t *testing.T) {
 	}
 	tests.Passed("Should have successfully connected to network")
 
-	if err := writeMessage(conn, "pub help"); err != nil {
+	payload := []byte("pub help")
+	if err := writeMessage(conn, payload); err != nil {
 		tests.FailedWithError(err, "Should have delivered message to network as client")
 	}
 	tests.Passed("Should have delivered message to network as client")
@@ -89,7 +90,7 @@ func BenchmarkNonTLSNetworkWrite(b *testing.B) {
 		tests.FailedWithError(err, "Should have successfully connected to network")
 	}
 
-	payload := "pub help"
+	payload := []byte("pub help")
 
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
@@ -120,7 +121,7 @@ func BenchmarkNonTLSNetworkReadAndWrite(b *testing.B) {
 		tests.FailedWithError(err, "Should have successfully connected to network")
 	}
 
-	payload := "pub help"
+	payload := []byte("pub help")
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		if err := writeMessage(conn, payload); err != nil {
@@ -155,10 +156,10 @@ func readMessage(conn net.Conn) ([]byte, error) {
 	return data, nil
 }
 
-func writeMessage(w io.Writer, msg string) error {
-	header := make([]byte, 2)
+func writeMessage(w io.Writer, msg []byte) error {
+	header := make([]byte, 2, len(msg)+2)
 	binary.BigEndian.PutUint16(header, uint16(len(msg)))
-	header = append(header, []byte(msg)...)
+	header = append(header, msg...)
 	_, err := w.Write(header)
 	return err
 }
@@ -218,6 +219,7 @@ func createNewNetwork(ctx context.CancelContext, addr string, config *tls.Config
 			message, err := client.Read()
 			if err != nil {
 				if err == mtcp.ErrNoDataYet {
+					time.Sleep(100 * time.Millisecond)
 					continue
 				}
 
@@ -241,6 +243,11 @@ func createNewNetwork(ctx context.CancelContext, addr string, config *tls.Config
 
 			if err := client.Flush(); err != nil {
 				fmt.Println("Failed to flush: ", err)
+				if err == io.ErrShortWrite {
+					continue
+				}
+
+				return err
 			}
 		}
 	}

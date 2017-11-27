@@ -18,15 +18,14 @@ import (
 )
 
 const (
-	minSleep      = 10 * time.Millisecond
-	maxSleep      = 2 * time.Second
-	maxActorWait  = 10 * time.Second
-	maxWorkWait   = 500 * time.Millisecond
-	writeDeadline = 3 * time.Second
-	minBufferSize = 512
-	minWriteSize  = 1024 * 512
-	maxWriteSize  = (1024 * 1024)
-	maxReadSize   = (1024 * 1024)
+	minSleep               = 10 * time.Millisecond
+	maxSleep               = 2 * time.Second
+	oneMB                  = 1024 * 1024
+	minBufferSize          = 512
+	maxBufferSize          = 1024 * minBufferSize
+	clientMinInitialBuffer = 8096
+	clientMaxBuffer        = 1024 * minBufferSize
+	clientWriteDeadline    = 600 * time.Millisecond
 )
 
 // errors ...
@@ -43,16 +42,15 @@ type message struct {
 }
 
 type networkConn struct {
-	id       string
-	ctx      context.CancelContext
-	lastRead int
-	flush    chan struct{}
-	close    chan struct{}
-	worker   sync.WaitGroup
+	id         string
+	ctx        context.CancelContext
+	localAddr  net.Addr
+	remoteAddr net.Addr
+	flushr     chan struct{}
+	closer     chan struct{}
+	worker     sync.WaitGroup
 
-	su      sync.Mutex
 	scratch bytes.Buffer
-
 	network *Network
 
 	mu   sync.Mutex
@@ -60,8 +58,9 @@ type networkConn struct {
 	conn net.Conn
 	head *message
 	tail *message
-	bu   sync.Mutex
-	bw   *WriteBuffer
+
+	buffWriter *mnet.BufferedIntervalWriter
+	bw         *mnet.SizeAppendBufferredWriter
 }
 
 func (nc *networkConn) write(cm mnet.Client, data []byte) (int, error) {
@@ -72,19 +71,24 @@ func (nc *networkConn) write(cm mnet.Client, data []byte) (int, error) {
 	}
 	nc.mu.Unlock()
 
-	nc.bu.Lock()
-	defer nc.bu.Unlock()
 	if nc.bw != nil {
 		return nc.bw.Write(data)
 	}
-	return 0, nil
+
+	return 0, ErrAlreadyClosed
 }
 
 func (nc *networkConn) closeConnection() error {
+	defer nc.network.Metrics.Emit(
+		metrics.WithID(nc.id),
+		metrics.With("network", nc.network.ID),
+		metrics.Message("networkConn.closeConnection"),
+	)
+
 	nc.mu.Lock()
-	if nc.close == nil {
+	if nc.Err != nil {
 		nc.mu.Unlock()
-		return nil
+		return nc.Err
 	}
 	nc.mu.Unlock()
 
@@ -92,41 +96,38 @@ func (nc *networkConn) closeConnection() error {
 	delete(nc.network.clients, nc.id)
 	nc.network.cu.Unlock()
 
-	var err error
-	select {
-	case nc.close <- struct{}{}:
-	default:
-	}
+	nc.buffWriter.Flush()
 
 	nc.mu.Lock()
-	if nc.conn != nil {
-		err = nc.conn.Close()
-		nc.conn = nil
-		nc.close = nil
-	}
+	nc.Err = ErrAlreadyClosed
 	nc.mu.Unlock()
-	return err
+
+	close(nc.closer)
+
+	nc.worker.Wait()
+
+	nc.mu.Lock()
+	nc.conn.Close()
+	nc.conn = nil
+	nc.mu.Unlock()
+
+	nc.buffWriter = nil
+	nc.bw = nil
+
+	return nc.Err
 }
 
 func (nc *networkConn) closeConn(cm mnet.Client) error {
-	err := nc.closeConnection()
-	nc.worker.Wait()
-
-	nc.bu.Lock()
-	nc.bw = nil
-	nc.bu.Unlock()
-
-	return err
+	return nc.closeConnection()
 }
 
 func (nc *networkConn) flushAll(cm mnet.Client) error {
-	if len(nc.flush) == 0 {
+	if len(nc.flushr) == 0 {
 		select {
-		case nc.flush <- struct{}{}:
+		case nc.flushr <- struct{}{}:
 		default:
 		}
 	}
-
 	return nil
 }
 
@@ -185,9 +186,9 @@ func (nc *networkConn) flushloop() {
 		select {
 		case <-nc.ctx.Done():
 			return
-		case <-nc.close:
+		case <-nc.closer:
 			return
-		case _, ok := <-nc.flush:
+		case _, ok := <-nc.flushr:
 			if !ok {
 				return
 			}
@@ -199,10 +200,7 @@ func (nc *networkConn) flushloop() {
 			}
 			nc.mu.Unlock()
 
-			nc.bu.Lock()
 			err := nc.bw.Flush()
-			nc.bu.Unlock()
-
 			if err != nil {
 				nc.network.Metrics.Emit(
 					metrics.Error(err),
@@ -213,6 +211,13 @@ func (nc *networkConn) flushloop() {
 
 				// Dealing with slow consumer, close it.
 				if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+					nc.network.Metrics.Emit(
+						metrics.Error(err),
+						metrics.WithID(nc.id),
+						metrics.Message("Connection seems to be a close consumer: closing"),
+						metrics.With("network", nc.network.ID),
+					)
+
 					nc.closeConnection()
 				}
 			}
@@ -221,9 +226,6 @@ func (nc *networkConn) flushloop() {
 }
 
 func (nc *networkConn) processMessage(data []byte) {
-	nc.su.Lock()
-	defer nc.su.Unlock()
-
 	nc.scratch.Write(data)
 
 	for nc.scratch.Len() > 0 {
@@ -257,6 +259,7 @@ func (nc *networkConn) processMessage(data []byte) {
 // readLoop handles the necessary operation of reading data from the
 // underline connection.
 func (nc *networkConn) readLoop() {
+	defer nc.closeConnection()
 	defer nc.worker.Done()
 
 	nc.mu.Lock()
@@ -266,27 +269,18 @@ func (nc *networkConn) readLoop() {
 	cn := nc.conn
 	nc.mu.Unlock()
 
-	var twiceBig int
-	incoming := make([]byte, minBufferSize, minWriteSize)
-	lastSize := minWriteSize
+	incoming := make([]byte, minBufferSize, maxBufferSize)
 
 	for {
 		n, err := cn.Read(incoming)
-
 		if err != nil {
 			nc.network.Metrics.Emit(
 				metrics.Error(err),
-				metrics.Message("Connection failed to read"),
 				metrics.WithID(nc.id),
+				metrics.Message("Connection failed to read: closing"),
 				metrics.With("network", nc.network.ID),
 			)
-
-			nc.mu.Lock()
-			nc.Err = err
-			nc.mu.Unlock()
-
-			nc.closeConnection()
-			return
+			break
 		}
 
 		// if nothing was read, skip.
@@ -297,10 +291,17 @@ func (nc *networkConn) readLoop() {
 		// Send into go-routine (critical path)?
 		nc.processMessage(incoming[:n])
 
-		twiceBig = (lastSize * 2)
-		if n > lastSize && n < maxWriteSize {
-			incoming = make([]byte, twiceBig, maxWriteSize)
-			lastSize = twiceBig
+		// Lets shrink buffer abit within area.
+		if n == len(incoming) && n < maxBufferSize {
+			incoming = incoming[0 : minBufferSize*2]
+		}
+
+		if n < len(incoming)/2 && len(incoming) > minBufferSize {
+			incoming = incoming[0 : len(incoming)/2]
+		}
+
+		if n > len(incoming) && len(incoming) > minBufferSize && n < maxBufferSize {
+			incoming = incoming[0 : maxBufferSize/2]
 		}
 	}
 }
@@ -315,17 +316,16 @@ type Network struct {
 	Handler mnet.ConnHandler
 	Metrics metrics.Metrics
 
-	// MaxWorkerWorkWait defines max time for worker to wait actively for working before dying out.
-	MaxWorkerWorkWait time.Duration
+	// ClientMaxWriteDeadline defines max time before all clients collected writes must be written to the connection.
+	ClientMaxWriteDeadline time.Duration
 
-	// MaxWorkWait defines the max time to wait for work to be accepted else spawn new worker for work.
-	MaxWorkWait time.Duration
+	// ClientInitialWriteSize sets given size of buffer for client's writer as it collects
+	// data till flush.
+	ClientInitialWriteSize int
 
-	// MaxWriteDeadline defines max deadline to be waited for, for clients conn to write data out.
-	MaxWriteDeadline time.Duration
-
-	MaxReaderSize int64
-	MaxWriterSize int64
+	// ClientMaxWriteSize sets given max size of buffer for client, each client writes collected
+	// till flush must not exceed else will not be buffered and will be written directly.
+	ClientMaxWriteSize int
 
 	pool     chan func()
 	cu       sync.RWMutex
@@ -364,24 +364,16 @@ func (n *Network) Start(ctx context.CancelContext) error {
 	n.pool = make(chan func(), 0)
 	n.clients = make(map[string]*networkConn)
 
-	if n.MaxWorkWait <= 0 {
-		n.MaxWorkWait = maxWorkWait
+	if n.ClientInitialWriteSize <= 0 {
+		n.ClientInitialWriteSize = clientMinInitialBuffer
 	}
 
-	if n.MaxWorkerWorkWait <= 0 {
-		n.MaxWorkerWorkWait = maxActorWait
+	if n.ClientMaxWriteDeadline <= 0 {
+		n.ClientMaxWriteDeadline = clientWriteDeadline
 	}
 
-	if n.MaxReaderSize <= 0 {
-		n.MaxReaderSize = maxReadSize
-	}
-
-	if n.MaxWriterSize <= 0 {
-		n.MaxWriterSize = maxWriteSize
-	}
-
-	if n.MaxWriteDeadline <= 0 {
-		n.MaxWriteDeadline = writeDeadline
+	if n.ClientMaxWriteSize <= 0 {
+		n.ClientMaxWriteSize = clientMaxBuffer
 	}
 
 	n.routines.Add(2)
@@ -395,8 +387,8 @@ func (n *Network) endLogic(ctx context.CancelContext, stream melon.ConnReadWrite
 	defer n.routines.Done()
 	<-ctx.Done()
 
-	for id, conn := range n.clients {
-		conn.closeConn(mnet.Client{ID: id})
+	for _, conn := range n.clients {
+		conn.closeConnection()
 	}
 
 	stream.Close()
@@ -405,6 +397,31 @@ func (n *Network) endLogic(ctx context.CancelContext, stream melon.ConnReadWrite
 // Wait is called to ensure network ended.
 func (n *Network) Wait() {
 	n.routines.Wait()
+}
+
+func (n *Network) getOtherClients(cm mnet.Client) ([]mnet.Client, error) {
+	n.cu.Lock()
+	defer n.cu.Unlock()
+
+	var clients []mnet.Client
+	for id, conn := range n.clients {
+		if id == cm.ID {
+			continue
+		}
+
+		client := mnet.Client{
+			ID:         id,
+			NID:        n.ID,
+			Metrics:    n.Metrics,
+			LocalAddr:  conn.localAddr,
+			RemoteAddr: conn.remoteAddr,
+		}
+		client.WriteFunc = conn.write
+		client.SiblingsFunc = n.getOtherClients
+		clients = append(clients, client)
+	}
+
+	return clients, nil
 }
 
 // runStream runs the process of listening for new connections and
@@ -471,14 +488,18 @@ func (n *Network) runStream(stream melon.ConnReadWriteCloser) {
 			cn.ctx = n.ctx
 			cn.network = n
 			cn.conn = conn
+			cn.localAddr = client.LocalAddr
+			cn.remoteAddr = client.RemoteAddr
+			cn.flushr = make(chan struct{}, 10)
+			cn.closer = make(chan struct{}, 0)
+			cn.buffWriter = mnet.NewBufferedIntervalWriter(conn, n.ClientMaxWriteSize, n.ClientMaxWriteDeadline)
+			cn.bw = mnet.NewSizeAppenBuffereddWriter(cn.buffWriter, n.ClientInitialWriteSize)
 
-			cn.flush = make(chan struct{}, 10)
-			cn.close = make(chan struct{}, 0)
 			client.ReaderFunc = cn.read
 			client.WriteFunc = cn.write
 			client.CloseFunc = cn.closeConn
 			client.FlushFunc = cn.flushAll
-			cn.bw = NewWriteBuffer(cn.conn, maxWriteSize)
+			client.SiblingsFunc = n.getOtherClients
 
 			cn.worker.Add(2)
 
