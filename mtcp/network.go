@@ -49,6 +49,7 @@ type networkConn struct {
 	flushr     chan struct{}
 	closer     chan struct{}
 	worker     sync.WaitGroup
+	do         sync.Once
 
 	scratch bytes.Buffer
 	network *Network
@@ -102,7 +103,9 @@ func (nc *networkConn) closeConnection() error {
 	nc.Err = ErrAlreadyClosed
 	nc.mu.Unlock()
 
-	close(nc.closer)
+	nc.do.Do(func() {
+		close(nc.closer)
+	})
 
 	nc.worker.Wait()
 
@@ -385,12 +388,11 @@ func (n *Network) Start(ctx context.CancelContext) error {
 
 func (n *Network) endLogic(ctx context.CancelContext, stream melon.ConnReadWriteCloser) {
 	defer n.routines.Done()
-	<-ctx.Done()
 
+	<-ctx.Done()
 	for _, conn := range n.clients {
 		conn.closeConnection()
 	}
-
 	stream.Close()
 }
 

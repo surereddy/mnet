@@ -204,12 +204,12 @@ func (wb *SizeAppendBufferredWriter) Flush() error {
 	}
 
 	data := wb.data[0:wb.c]
-	header := make([]byte, 2, wb.c+50)
+	lenWithHeader := wb.c + 2
+	header := make([]byte, wb.c+2)
 	binary.BigEndian.PutUint16(header, uint16(wb.c))
-	copy(header[2:cap(header)], data)
-	header = header[0 : wb.c+2]
+	copy(header[2:], data)
 
-	count := len(header)
+	count := len(header[0:lenWithHeader])
 	n, err := wb.w.Write(header)
 	if n < count && err == nil {
 		err = io.ErrShortWrite
