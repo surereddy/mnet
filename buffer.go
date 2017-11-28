@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"io"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -14,14 +15,15 @@ import (
 // as much writes is collected before hitting final writer to
 // minimal write calls for buffer.
 type BufferedIntervalWriter struct {
-	timer *time.Timer
-	w     io.Writer
-	dur   time.Duration
-	mu    sync.RWMutex
-	buff  []byte
-	c     int
-	err   error
-	size  int
+	timer        *time.Timer
+	w            io.Writer
+	dur          time.Duration
+	mu           sync.RWMutex
+	timerStopped bool
+	buff         []byte
+	c            int
+	err          error
+	size         int
 }
 
 // NewBufferedIntervalWriter returns new BufferedIntervalWriter whoes has at least the specified size.
@@ -38,6 +40,29 @@ func NewBufferedIntervalWriter(w io.Writer, bufferSize int, writeInterval time.D
 	return bu
 }
 
+// Reset resets the internal writer to a new writer to be used.
+func (bu *BufferedIntervalWriter) Reset(w io.Writer) error {
+	bu.mu.Lock()
+	bu.w = w
+	bu.err = nil
+
+	// If writer is nil and we have not stopped timer, then stop it
+	if w == nil && !bu.timerStopped {
+		bu.timerStopped = true
+		bu.timer.Stop()
+	}
+
+	// If writer aint nil and we just got stopped, then start it up
+	// again.
+	if w != nil && bu.timerStopped {
+		bu.timerStopped = false
+		bu.timer.Reset(bu.dur)
+	}
+
+	bu.mu.Unlock()
+	return nil
+}
+
 // Flush sends given data into underline writer.
 func (bu *BufferedIntervalWriter) Flush() error {
 	bu.mu.Lock()
@@ -48,6 +73,10 @@ func (bu *BufferedIntervalWriter) Flush() error {
 	}
 
 	if bu.c == 0 {
+		return nil
+	}
+
+	if bu.w == nil {
 		return nil
 	}
 
@@ -77,6 +106,15 @@ func (bu *BufferedIntervalWriter) Flush() error {
 	return nil
 }
 
+// StopTimer stops the internal flush timer of the writer.
+func (bu *BufferedIntervalWriter) StopTimer() error {
+	bu.timer.Stop()
+	bu.mu.Lock()
+	bu.timerStopped = true
+	bu.mu.Unlock()
+	return nil
+}
+
 // Close closes the BufferedIntervalWriter, stops the timer, clears
 // all references and sets an err ensuring the instance can not be
 // re-used.
@@ -102,6 +140,7 @@ func (bu *BufferedIntervalWriter) Close() error {
 
 	bu.buff = nil
 	bu.c = 0
+	bu.w = nil
 
 	bu.err = io.ErrClosedPipe
 
@@ -138,6 +177,10 @@ func (bu *BufferedIntervalWriter) Write(d []byte) (int, error) {
 	nextSize := bu.c + dLen
 
 	if nextSize >= bu.size {
+		if bu.w == nil {
+			return 0, ErrWriteNotAllowed
+		}
+
 		n, err := bu.w.Write(d)
 		if n < dLen && err == nil {
 			err = io.ErrShortWrite
@@ -170,6 +213,7 @@ type SizeAppendBufferredWriter struct {
 	data []byte
 	err  error
 	c    int
+	fl   int64
 	m    int
 }
 
@@ -190,7 +234,7 @@ func NewSizeAppenBuffereddWriter(w io.Writer, minBufferSize int) *SizeAppendBuff
 
 // Length returns the current total length of items in buffer.
 func (wb *SizeAppendBufferredWriter) Length() int {
-	return wb.c
+	return int(atomic.LoadInt64(&wb.fl))
 }
 
 // Flush attempts to write underline data into underline writer.
@@ -214,6 +258,8 @@ func (wb *SizeAppendBufferredWriter) Flush() error {
 	if n < count && err == nil {
 		err = io.ErrShortWrite
 	}
+
+	atomic.AddInt64(&wb.fl, int64(n))
 
 	if err != nil {
 		if n != 0 && n < count {

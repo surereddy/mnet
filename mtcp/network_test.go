@@ -181,12 +181,13 @@ func createNewNetwork(ctx context.CancelContext, addr string, config *tls.Config
 	netw.Addr = addr
 	netw.Metrics = events
 	netw.TLS = config
+	netw.ClientMaxWriteDeadline = 1 * time.Second
 
 	netw.Handler = func(client mnet.Client) error {
 		for {
 			message, err := client.Read()
 			if err != nil {
-				if err == mtcp.ErrNoDataYet {
+				if err == mnet.ErrNoDataYet {
 					time.Sleep(100 * time.Millisecond)
 					continue
 				}
@@ -210,7 +211,6 @@ func createNewNetwork(ctx context.CancelContext, addr string, config *tls.Config
 			}
 
 			if err := client.Flush(); err != nil {
-				fmt.Println("Failed to flush: ", err)
 				if err == io.ErrShortWrite {
 					continue
 				}

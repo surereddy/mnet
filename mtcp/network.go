@@ -1,12 +1,10 @@
 package mtcp
 
 import (
-	"bytes"
 	"crypto/tls"
-	"encoding/binary"
-	"errors"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/influx6/faux/context"
@@ -28,14 +26,6 @@ const (
 	clientWriteDeadline    = 600 * time.Millisecond
 )
 
-// errors ...
-var (
-	ErrAlreadyClosed    = errors.New("already closed connection")
-	ErrNoDataYet        = errors.New("data is not yet available for reading")
-	ErrInvalidWriteSize = errors.New("returned write size does not match data len")
-	ErrParseErr         = errors.New("Failed to parse data")
-)
-
 type message struct {
 	data []byte
 	next *message
@@ -46,22 +36,33 @@ type networkConn struct {
 	ctx        context.CancelContext
 	localAddr  net.Addr
 	remoteAddr net.Addr
-	flushr     chan struct{}
 	closer     chan struct{}
 	worker     sync.WaitGroup
 	do         sync.Once
+	parser     *mnet.SizedMessageParser
 
-	scratch bytes.Buffer
+	totalReadIn   int64
+	totalWriteOut int64
+	totalFlushOut int64
+
 	network *Network
 
 	mu   sync.Mutex
 	Err  error
 	conn net.Conn
-	head *message
-	tail *message
 
 	buffWriter *mnet.BufferedIntervalWriter
 	bw         *mnet.SizeAppendBufferredWriter
+}
+
+func (nc *networkConn) getStatistics(cm mnet.Client) (mnet.Statistics, error) {
+	var stats mnet.Statistics
+	stats.TotalClients = atomic.LoadInt64(&nc.network.totalClients)
+	stats.TotalReadInBytes = atomic.LoadInt64(&nc.totalReadIn)
+	stats.TotalFlushedInBytes = atomic.LoadInt64(&nc.totalFlushOut)
+	stats.TotalWrittenInBytes = atomic.LoadInt64(&nc.totalWriteOut)
+	stats.TotalClientsClosed = atomic.LoadInt64(&nc.network.totalClosedClients)
+	return stats, nil
 }
 
 func (nc *networkConn) write(cm mnet.Client, data []byte) (int, error) {
@@ -72,11 +73,14 @@ func (nc *networkConn) write(cm mnet.Client, data []byte) (int, error) {
 	}
 	nc.mu.Unlock()
 
+	atomic.AddInt64(&nc.totalWriteOut, int64(len(data)))
+	atomic.AddInt64(&nc.network.totalClientsWriteOut, int64(len(data)))
+
 	if nc.bw != nil {
 		return nc.bw.Write(data)
 	}
 
-	return 0, ErrAlreadyClosed
+	return 0, mnet.ErrAlreadyClosed
 }
 
 func (nc *networkConn) closeConnection() error {
@@ -97,22 +101,26 @@ func (nc *networkConn) closeConnection() error {
 	delete(nc.network.clients, nc.id)
 	nc.network.cu.Unlock()
 
-	nc.buffWriter.Flush()
-
 	nc.mu.Lock()
-	nc.Err = ErrAlreadyClosed
+	nc.Err = mnet.ErrAlreadyClosed
 	nc.mu.Unlock()
 
 	nc.do.Do(func() {
+		// nc.bw.Flush()
+		nc.buffWriter.StopTimer()
+		nc.conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+		nc.buffWriter.Flush()
+		nc.conn.SetWriteDeadline(time.Time{})
+		nc.buffWriter.Reset(nil)
+
 		close(nc.closer)
+
+		atomic.AddInt64(&nc.network.totalClosedClients, 1)
+		nc.conn.Close()
+		nc.conn = nil
 	})
 
 	nc.worker.Wait()
-
-	nc.mu.Lock()
-	nc.conn.Close()
-	nc.conn = nil
-	nc.mu.Unlock()
 
 	nc.buffWriter = nil
 	nc.bw = nil
@@ -120,143 +128,43 @@ func (nc *networkConn) closeConnection() error {
 	return nc.Err
 }
 
+func (nc *networkConn) getRemoteAddr(cm mnet.Client) (net.Addr, error) {
+	return nc.remoteAddr, nil
+}
+
+func (nc *networkConn) getLocalAddr(cm mnet.Client) (net.Addr, error) {
+	return nc.localAddr, nil
+}
+
 func (nc *networkConn) closeConn(cm mnet.Client) error {
 	return nc.closeConnection()
 }
 
-func (nc *networkConn) flushAll(cm mnet.Client) error {
-	if len(nc.flushr) == 0 {
-		select {
-		case nc.flushr <- struct{}{}:
-		default:
-		}
+func (nc *networkConn) flush(cm mnet.Client) error {
+	nc.mu.Lock()
+	if nc.Err != nil {
+		nc.mu.Unlock()
+		return nc.Err
 	}
-	return nil
+	nc.mu.Unlock()
+
+	if nc.bw == nil {
+		return mnet.ErrAlreadyClosed
+	}
+
+	atomic.StoreInt64(&nc.totalFlushOut, int64(nc.bw.Length()))
+	return nc.bw.Flush()
 }
 
 // read returns data from the underline message list.
 func (nc *networkConn) read(cm mnet.Client) ([]byte, error) {
-	return nc.getMessage()
-}
-
-func (nc *networkConn) getMessage() ([]byte, error) {
 	nc.mu.Lock()
-	defer nc.mu.Unlock()
-
 	if nc.Err != nil {
 		return nil, nc.Err
 	}
+	nc.mu.Unlock()
 
-	if nc.tail == nil && nc.head == nil {
-		return nil, ErrNoDataYet
-	}
-
-	head := nc.head
-	if nc.tail == head {
-		nc.tail = nil
-		nc.head = nil
-	} else {
-		next := head.next
-		head.next = nil
-		nc.head = next
-	}
-
-	return head.data, nil
-}
-
-func (nc *networkConn) addMessage(m *message) {
-	nc.mu.Lock()
-	defer nc.mu.Unlock()
-
-	if nc.Err != nil {
-		return
-	}
-
-	if nc.head == nil && nc.tail == nil {
-		nc.head = m
-		nc.tail = m
-		return
-	}
-
-	nc.tail.next = m
-	nc.tail = m
-}
-
-func (nc *networkConn) flushloop() {
-	defer nc.worker.Done()
-
-	for {
-		select {
-		case <-nc.ctx.Done():
-			return
-		case <-nc.closer:
-			return
-		case _, ok := <-nc.flushr:
-			if !ok {
-				return
-			}
-
-			nc.mu.Lock()
-			if nc.conn == nil {
-				nc.mu.Unlock()
-				return
-			}
-			nc.mu.Unlock()
-
-			err := nc.bw.Flush()
-			if err != nil {
-				nc.network.Metrics.Emit(
-					metrics.Error(err),
-					metrics.WithID(nc.id),
-					metrics.Message("networkConn.flushloop"),
-					metrics.With("network", nc.network.ID),
-				)
-
-				// Dealing with slow consumer, close it.
-				if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-					nc.network.Metrics.Emit(
-						metrics.Error(err),
-						metrics.WithID(nc.id),
-						metrics.Message("Connection seems to be a close consumer: closing"),
-						metrics.With("network", nc.network.ID),
-					)
-
-					nc.closeConnection()
-				}
-			}
-		}
-	}
-}
-
-func (nc *networkConn) processMessage(data []byte) {
-	nc.scratch.Write(data)
-
-	for nc.scratch.Len() > 0 {
-		nextdata := nc.scratch.Next(2)
-		if len(nextdata) < 2 {
-			nc.scratch.Write(nextdata)
-			return
-		}
-
-		nextSize := int(binary.BigEndian.Uint16(nextdata))
-
-		// If scratch is zero and we do have count data, maybe we face a unfinished write.
-		if nc.scratch.Len() == 0 {
-			nc.scratch.Write(nextdata)
-			return
-		}
-
-		if nextSize > nc.scratch.Len() {
-			rest := nc.scratch.Bytes()
-			restruct := append(nextdata, rest...)
-			nc.scratch.Reset()
-			nc.scratch.Write(restruct)
-			return
-		}
-
-		next := nc.scratch.Next(nextSize)
-		nc.addMessage(&message{data: next})
-	}
+	return nc.parser.Next()
 }
 
 // readLoop handles the necessary operation of reading data from the
@@ -292,7 +200,10 @@ func (nc *networkConn) readLoop() {
 		}
 
 		// Send into go-routine (critical path)?
-		nc.processMessage(incoming[:n])
+		nc.parser.Parse(incoming[:n])
+
+		atomic.AddInt64(&nc.totalReadIn, int64(n))
+		atomic.AddInt64(&nc.network.totalClientsReadIn, int64(n))
 
 		// Lets shrink buffer abit within area.
 		if n == len(incoming) && n < maxBufferSize {
@@ -318,6 +229,11 @@ type Network struct {
 	TLS     *tls.Config
 	Handler mnet.ConnHandler
 	Metrics metrics.Metrics
+
+	totalClients         int64
+	totalClosedClients   int64
+	totalClientsReadIn   int64
+	totalClientsWriteOut int64
 
 	// ClientMaxWriteDeadline defines max time before all clients collected writes must be written to the connection.
 	ClientMaxWriteDeadline time.Duration
@@ -396,6 +312,16 @@ func (n *Network) endLogic(ctx context.CancelContext, stream melon.ConnReadWrite
 	stream.Close()
 }
 
+// Statistics returns statics associated with Network.
+func (n *Network) Statistics() mnet.Statistics {
+	var stats mnet.Statistics
+	stats.TotalClients = atomic.LoadInt64(&n.totalClients)
+	stats.TotalReadInBytes = atomic.LoadInt64(&n.totalClientsReadIn)
+	stats.TotalWrittenInBytes = atomic.LoadInt64(&n.totalClientsWriteOut)
+	stats.TotalClientsClosed = atomic.LoadInt64(&n.totalClosedClients)
+	return stats
+}
+
 // Wait is called to ensure network ended.
 func (n *Network) Wait() {
 	n.routines.Wait()
@@ -412,13 +338,13 @@ func (n *Network) getOtherClients(cm mnet.Client) ([]mnet.Client, error) {
 		}
 
 		client := mnet.Client{
-			ID:         id,
-			NID:        n.ID,
-			Metrics:    n.Metrics,
-			LocalAddr:  conn.localAddr,
-			RemoteAddr: conn.remoteAddr,
+			ID:      id,
+			NID:     n.ID,
+			Metrics: n.Metrics,
 		}
 		client.WriteFunc = conn.write
+		client.RemoteAddrFunc = conn.getRemoteAddr
+		client.LocalAddrFunc = conn.getLocalAddr
 		client.SiblingsFunc = n.getOtherClients
 		clients = append(clients, client)
 	}
@@ -469,11 +395,9 @@ func (n *Network) runStream(stream melon.ConnReadWriteCloser) {
 			uuid := uuid.NewV4().String()
 
 			client := mnet.Client{
-				ID:         uuid,
-				NID:        n.ID,
-				LocalAddr:  conn.LocalAddr(),
-				RemoteAddr: conn.RemoteAddr(),
-				Metrics:    n.Metrics,
+				ID:      uuid,
+				NID:     n.ID,
+				Metrics: n.Metrics,
 			}
 
 			n.Metrics.Emit(
@@ -485,33 +409,38 @@ func (n *Network) runStream(stream melon.ConnReadWriteCloser) {
 				metrics.With("remote_addr", client.RemoteAddr),
 			)
 
+			var parser mnet.SizedMessageParser
+
 			cn := new(networkConn)
 			cn.id = uuid
 			cn.ctx = n.ctx
 			cn.network = n
 			cn.conn = conn
-			cn.localAddr = client.LocalAddr
-			cn.remoteAddr = client.RemoteAddr
-			cn.flushr = make(chan struct{}, 10)
+			cn.parser = &parser
+			cn.localAddr = conn.LocalAddr()
+			cn.remoteAddr = conn.RemoteAddr()
 			cn.closer = make(chan struct{}, 0)
 			cn.buffWriter = mnet.NewBufferedIntervalWriter(conn, n.ClientMaxWriteSize, n.ClientMaxWriteDeadline)
 			cn.bw = mnet.NewSizeAppenBuffereddWriter(cn.buffWriter, n.ClientInitialWriteSize)
 
 			client.ReaderFunc = cn.read
 			client.WriteFunc = cn.write
+			client.FlushFunc = cn.flush
 			client.CloseFunc = cn.closeConn
-			client.FlushFunc = cn.flushAll
+			client.LocalAddrFunc = cn.getLocalAddr
+			client.StatisticFunc = cn.getStatistics
 			client.SiblingsFunc = n.getOtherClients
+			client.RemoteAddrFunc = cn.getRemoteAddr
 
-			cn.worker.Add(2)
+			cn.worker.Add(1)
 
 			go cn.readLoop()
-			go cn.flushloop()
 
 			n.cu.Lock()
 			n.clients[uuid] = cn
 			n.cu.Unlock()
 
+			atomic.AddInt64(&n.totalClients, 1)
 			if err := n.Handler(client); err != nil {
 				client.Close()
 			}
