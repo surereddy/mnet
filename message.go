@@ -1,7 +1,6 @@
 package mnet
 
 import (
-	"bytes"
 	"encoding/binary"
 	"errors"
 	"sync"
@@ -27,11 +26,18 @@ type Message struct {
 // linked list which contains already processed message, which has a endless length
 // value which allows appending new messages as they arrive.
 type SizedMessageParser struct {
-	scratch           bytes.Buffer
+	scratch           *BufferedPeeker
 	processedMessages int64
 	mu                sync.RWMutex
 	head              *Message
 	tail              *Message
+}
+
+// NewSizedMessageParser returns a new instance of SizedMessageParser.
+func NewSizedMessageParser() *SizedMessageParser {
+	return &SizedMessageParser{
+		scratch: NewBufferedPeeker(nil),
+	}
 }
 
 // TotalProcessed returns total message processed successfully.
@@ -42,28 +48,25 @@ func (smp *SizedMessageParser) TotalProcessed() int {
 // Parse implements the necessary procedure for parsing incoming data and
 // appropriately splitting them accordingly to their respective parts.
 func (smp *SizedMessageParser) Parse(d []byte) error {
-	smp.scratch.Write(d)
+	smp.scratch.Reset(d)
 
-	for smp.scratch.Len() > 0 {
+	for smp.scratch.Area() > 0 {
 		nextdata := smp.scratch.Next(2)
 		if len(nextdata) < 2 {
-			smp.scratch.Write(nextdata)
+			smp.scratch.Reverse(2)
 			break
 		}
 
 		nextSize := int(binary.BigEndian.Uint16(nextdata))
 
 		// If scratch is zero and we do have count data, maybe we face a unfinished write.
-		if smp.scratch.Len() == 0 {
-			smp.scratch.Write(nextdata)
+		if smp.scratch.Area() == 0 {
+			smp.scratch.Reverse(2)
 			break
 		}
 
-		if nextSize > smp.scratch.Len() {
-			rest := smp.scratch.Bytes()
-			restruct := append(nextdata, rest...)
-			smp.scratch.Reset()
-			smp.scratch.Write(restruct)
+		if nextSize > smp.scratch.Area() {
+			smp.scratch.Reverse(2)
 			break
 		}
 

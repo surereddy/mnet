@@ -1,0 +1,7 @@
+goos: darwin
+goarch: amd64
+pkg: github.com/influx6/mnet/mtcp
+BenchmarkNonTLSNetworkWriteWithClient-4    	30000000	        56.0 ns/op	 142.83 MB/s	       0 B/op	       0 allocs/op
+BenchmarkNonTLSNetworkWriteWithNetConn-4   	  200000	     10098 ns/op	   0.79 MB/s	     105 B/op	       3 allocs/op
+PASS
+ok  	github.com/influx6/mnet/mtcp	7.249s

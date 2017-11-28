@@ -138,16 +138,14 @@ func Connect(addr string, ops ...ConnectOptions) (mnet.Client, error) {
 
 	if network.dialer == nil {
 		network.dialer = &net.Dialer{
-			Timeout:   network.dialTimeout,
-			KeepAlive: network.keepAliveTimeout,
+			Timeout: network.dialTimeout,
+			// KeepAlive: network.keepAliveTimeout,
 		}
 	}
 
-	var parser mnet.SizedMessageParser
-
 	network.id = c.ID
 	network.addr = addr
-	network.parser = &parser
+	network.parser = mnet.NewSizedMessageParser()
 	network.buffWriter = mnet.NewBufferedIntervalWriter(&network.scratch, network.clientMaxWriteSize, network.clientMaxWriteDeadline)
 	network.bw = mnet.NewSizeAppenBuffereddWriter(network.buffWriter, network.clientInitialWriteSize)
 
@@ -254,7 +252,7 @@ func (cn *clientNetwork) close(cm mnet.Client) error {
 	cn.do.Do(func() {
 		cn.buffWriter.StopTimer()
 
-		conn.SetWriteDeadline(time.Now().Add(1 * time.Second))
+		conn.SetWriteDeadline(time.Now().Add(3 * time.Second))
 		cn.buffWriter.Flush()
 		conn.SetWriteDeadline(time.Time{})
 		cn.buffWriter.Reset(&cn.scratch)
@@ -291,7 +289,7 @@ func (cn *clientNetwork) read(cm mnet.Client) ([]byte, error) {
 }
 
 func (cn *clientNetwork) readLoop(cm mnet.Client, conn net.Conn) {
-	defer cn.close(cm)
+	// defer cn.close(cm)
 	defer cn.worker.Done()
 
 	incoming := make([]byte, minBufferSize, maxBufferSize)

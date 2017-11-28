@@ -213,6 +213,7 @@ type SizeAppendBufferredWriter struct {
 	data []byte
 	err  error
 	c    int
+	rc   int
 	fl   int64
 	m    int
 }
@@ -224,15 +225,18 @@ type SizeAppendBufferredWriter struct {
 // Ensure to always provide a big enough minimum buffer size to host data
 // to be written, this ensures the array is big enough and wont incur
 // multiple expansion when data is being written into buffer.
-func NewSizeAppenBuffereddWriter(w io.Writer, minBufferSize int) *SizeAppendBufferredWriter {
+func NewSizeAppenBuffereddWriter(w io.Writer, maxBufferSize int) *SizeAppendBufferredWriter {
+	buff := make([]byte, 2, maxBufferSize)
 	return &SizeAppendBufferredWriter{
 		w:    w,
-		m:    minBufferSize,
-		data: make([]byte, 0, minBufferSize),
+		m:    maxBufferSize,
+		data: buff,
+		c:    2,
+		fl:   0,
 	}
 }
 
-// Length returns the current total length of items in buffer.
+// Length returns the current total items flushed in buffer.
 func (wb *SizeAppendBufferredWriter) Length() int {
 	return int(atomic.LoadInt64(&wb.fl))
 }
@@ -243,18 +247,15 @@ func (wb *SizeAppendBufferredWriter) Flush() error {
 		return wb.err
 	}
 
-	if wb.c == 0 {
+	if wb.c == 2 {
 		return nil
 	}
 
 	data := wb.data[0:wb.c]
-	lenWithHeader := wb.c + 2
-	header := make([]byte, wb.c+2)
-	binary.BigEndian.PutUint16(header, uint16(wb.c))
-	copy(header[2:], data)
+	binary.BigEndian.PutUint16(data, uint16(wb.rc))
 
-	count := len(header[0:lenWithHeader])
-	n, err := wb.w.Write(header)
+	count := len(data)
+	n, err := wb.w.Write(data)
 	if n < count && err == nil {
 		err = io.ErrShortWrite
 	}
@@ -263,8 +264,10 @@ func (wb *SizeAppendBufferredWriter) Flush() error {
 
 	if err != nil {
 		if n != 0 && n < count {
-			copy(wb.data[0:wb.c-n], wb.data[n:wb.c])
-			wb.c -= n
+			rest := data[n:]
+			copy(wb.data[2:wb.m], rest)
+			wb.c = len(rest) + 2
+			wb.rc = len(rest)
 		}
 
 		if err != io.ErrShortWrite {
@@ -274,8 +277,10 @@ func (wb *SizeAppendBufferredWriter) Flush() error {
 		return err
 	}
 
-	wb.c = 0
-	wb.data = wb.data[:0]
+	wb.c = 2
+	wb.rc = 0
+	atomic.StoreInt64(&wb.fl, 0)
+	wb.data = wb.data[:2]
 
 	return nil
 }
@@ -290,8 +295,94 @@ func (wb *SizeAppendBufferredWriter) Write(d []byte) (int, error) {
 		return 0, nil
 	}
 
-	wb.data = append(wb.data, d...)
-	wb.c += len(d)
+	// if we have filled up possible size area, then flush first.
+	if len(d)+wb.c >= wb.m {
+		if err := wb.Flush(); err != nil {
+			return 0, err
+		}
+	}
+
+	copied := copy(wb.data[wb.c:wb.m], d)
+	wb.c += copied
+	wb.rc = wb.c - 2
 
 	return len(d), nil
+}
+
+// BufferedPeeker implements a custom buffer structure which
+// allows peeks, reversal of index location of provided byte slice.
+// It helps to minimize memory allocation.
+type BufferedPeeker struct {
+	l int
+	d []byte
+	c int
+}
+
+// NewBufferedPeeker returns new instance of BufferedPeeker.
+func NewBufferedPeeker(d []byte) *BufferedPeeker {
+	return &BufferedPeeker{
+		d: d,
+		l: len(d),
+	}
+}
+
+// Reset sets giving buffers memory slice and sets appropriate
+// settings.
+func (b *BufferedPeeker) Reset(bm []byte) {
+	b.d = bm
+	b.l = len(bm)
+	b.c = 0
+}
+
+// Length returns total length of slice.
+func (b *BufferedPeeker) Length() int {
+	return len(b.d)
+}
+
+// Area returns current available length from current index.
+func (b *BufferedPeeker) Area() int {
+	return len(b.d[b.c:])
+}
+
+// Reverse reverses previous index back a giving length
+// It reverse any length back to 0 if length provided exceeds
+// underline slice length.
+func (b *BufferedPeeker) Reverse(n int) {
+	back := b.c - n
+	if back <= 0 && b.c == 0 {
+		return
+	}
+
+	if back <= 0 {
+		b.c = 0
+		return
+	}
+
+	b.c = back
+}
+
+// Next returns bytes around giving range.
+// If area is beyond slice length, then the rest of slice is returned.
+func (b *BufferedPeeker) Next(n int) []byte {
+	if b.c+n >= b.l {
+		p := b.c
+		b.c = b.l
+		return b.d[p:]
+	}
+
+	area := b.d[b.c : b.c+n]
+	b.c += n
+	return area
+}
+
+// Peek returns the next bytes of giving n length. It
+// will not move index beyond current bounds, but returns
+// current area if within slice length.
+// If area is beyond slice length, then the rest of slice is returned.
+func (b *BufferedPeeker) Peek(n int) []byte {
+	if b.c+n >= b.l {
+		return b.d[b.c:]
+	}
+
+	return b.d[b.c : b.c+n]
 }

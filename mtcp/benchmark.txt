@@ -1,0 +1,11 @@
+benchmark                                    old ns/op     new ns/op     delta
+BenchmarkNonTLSNetworkWriteWithClient-4      273           56.0          -79.49%
+BenchmarkNonTLSNetworkWriteWithNetConn-4     8848          10098         +14.13%
+
+benchmark                                    old allocs     new allocs     delta
+BenchmarkNonTLSNetworkWriteWithClient-4      4              0              -100.00%
+BenchmarkNonTLSNetworkWriteWithNetConn-4     6              3              -50.00%
+
+benchmark                                    old bytes     new bytes     delta
+BenchmarkNonTLSNetworkWriteWithClient-4      160           0             -100.00%
+BenchmarkNonTLSNetworkWriteWithNetConn-4     211           105           -50.24%

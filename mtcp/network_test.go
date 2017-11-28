@@ -34,7 +34,7 @@ func initMetrics() {
 	}
 }
 
-func TestNonTLSNetwork(t *testing.T) {
+func TestNonTLSNetworkWithNetConn(t *testing.T) {
 	initMetrics()
 
 	ctx := context.New()
@@ -74,37 +74,6 @@ func TestNonTLSNetwork(t *testing.T) {
 	ctx.Cancel()
 
 	netw.Wait()
-}
-
-func BenchmarkNonTLSNetworkWrite(b *testing.B) {
-	b.StopTimer()
-
-	ctx := context.New()
-	netw, err := createNewNetwork(ctx, ":5050", nil)
-	if err != nil {
-		tests.FailedWithError(err, "Should have successfully create network")
-	}
-
-	conn, err := net.DialTimeout("tcp", ":5050", 2*time.Second)
-	if err != nil {
-		tests.FailedWithError(err, "Should have successfully connected to network")
-	}
-
-	payload := []byte("pub help")
-
-	b.StartTimer()
-	for i := 0; i < b.N; i++ {
-		writeMessage(conn, payload)
-		if i%100 == 0 {
-			time.Sleep(1 * time.Nanosecond)
-		}
-	}
-
-	b.StopTimer()
-	conn.Close()
-	ctx.Cancel()
-	netw.Wait()
-
 }
 
 func readMessage(conn net.Conn) ([]byte, error) {
@@ -188,7 +157,7 @@ func createNewNetwork(ctx context.CancelContext, addr string, config *tls.Config
 			message, err := client.Read()
 			if err != nil {
 				if err == mnet.ErrNoDataYet {
-					time.Sleep(100 * time.Millisecond)
+					time.Sleep(300 * time.Millisecond)
 					continue
 				}
 

@@ -21,8 +21,8 @@ const (
 	oneMB                  = 1024 * 1024
 	minBufferSize          = 512
 	maxBufferSize          = 1024 * minBufferSize
-	clientMinInitialBuffer = 8096
-	clientMaxBuffer        = 1024 * minBufferSize
+	clientMinInitialBuffer = 1024 * minBufferSize
+	clientMaxBuffer        = 1024 * 1024
 	clientWriteDeadline    = 600 * time.Millisecond
 )
 
@@ -47,7 +47,7 @@ type networkConn struct {
 
 	network *Network
 
-	mu   sync.Mutex
+	mu   sync.RWMutex
 	Err  error
 	conn net.Conn
 
@@ -66,12 +66,12 @@ func (nc *networkConn) getStatistics(cm mnet.Client) (mnet.Statistics, error) {
 }
 
 func (nc *networkConn) write(cm mnet.Client, data []byte) (int, error) {
-	nc.mu.Lock()
+	nc.mu.RLock()
 	if nc.Err != nil {
-		nc.mu.Unlock()
+		nc.mu.RUnlock()
 		return 0, nc.Err
 	}
-	nc.mu.Unlock()
+	nc.mu.RUnlock()
 
 	atomic.AddInt64(&nc.totalWriteOut, int64(len(data)))
 	atomic.AddInt64(&nc.network.totalClientsWriteOut, int64(len(data)))
@@ -90,25 +90,21 @@ func (nc *networkConn) closeConnection() error {
 		metrics.Message("networkConn.closeConnection"),
 	)
 
-	nc.mu.Lock()
+	nc.mu.RLock()
 	if nc.Err != nil {
-		nc.mu.Unlock()
+		nc.mu.RUnlock()
 		return nc.Err
 	}
-	nc.mu.Unlock()
+	nc.mu.RUnlock()
 
 	nc.network.cu.Lock()
 	delete(nc.network.clients, nc.id)
 	nc.network.cu.Unlock()
 
-	nc.mu.Lock()
-	nc.Err = mnet.ErrAlreadyClosed
-	nc.mu.Unlock()
-
 	nc.do.Do(func() {
 		// nc.bw.Flush()
 		nc.buffWriter.StopTimer()
-		nc.conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+		nc.conn.SetWriteDeadline(time.Now().Add(3 * time.Second))
 		nc.buffWriter.Flush()
 		nc.conn.SetWriteDeadline(time.Time{})
 		nc.buffWriter.Reset(nil)
@@ -117,8 +113,12 @@ func (nc *networkConn) closeConnection() error {
 
 		atomic.AddInt64(&nc.network.totalClosedClients, 1)
 		nc.conn.Close()
-		nc.conn = nil
 	})
+
+	nc.mu.Lock()
+	nc.Err = mnet.ErrAlreadyClosed
+	nc.conn = nil
+	nc.mu.Unlock()
 
 	nc.worker.Wait()
 
@@ -141,12 +141,12 @@ func (nc *networkConn) closeConn(cm mnet.Client) error {
 }
 
 func (nc *networkConn) flush(cm mnet.Client) error {
-	nc.mu.Lock()
+	nc.mu.RLock()
 	if nc.Err != nil {
-		nc.mu.Unlock()
+		nc.mu.RUnlock()
 		return nc.Err
 	}
-	nc.mu.Unlock()
+	nc.mu.RUnlock()
 
 	if nc.bw == nil {
 		return mnet.ErrAlreadyClosed
@@ -158,11 +158,12 @@ func (nc *networkConn) flush(cm mnet.Client) error {
 
 // read returns data from the underline message list.
 func (nc *networkConn) read(cm mnet.Client) ([]byte, error) {
-	nc.mu.Lock()
+	nc.mu.RLock()
 	if nc.Err != nil {
+		nc.mu.RUnlock()
 		return nil, nc.Err
 	}
-	nc.mu.Unlock()
+	nc.mu.RUnlock()
 
 	return nc.parser.Next()
 }
@@ -173,12 +174,13 @@ func (nc *networkConn) readLoop() {
 	defer nc.closeConnection()
 	defer nc.worker.Done()
 
-	nc.mu.Lock()
+	nc.mu.RLock()
 	if nc.conn == nil {
+		nc.mu.RUnlock()
 		return
 	}
 	cn := nc.conn
-	nc.mu.Unlock()
+	nc.mu.RUnlock()
 
 	incoming := make([]byte, minBufferSize, maxBufferSize)
 
@@ -269,7 +271,6 @@ func (n *Network) Start(ctx context.CancelContext) error {
 
 	defer n.Metrics.Emit(
 		metrics.Message("Network.Start"),
-
 		metrics.With("network", n.ID),
 		metrics.WithID(n.ID),
 	)
@@ -409,14 +410,12 @@ func (n *Network) runStream(stream melon.ConnReadWriteCloser) {
 				metrics.With("remote_addr", conn.RemoteAddr()),
 			)
 
-			var parser mnet.SizedMessageParser
-
 			cn := new(networkConn)
 			cn.id = uuid
 			cn.ctx = n.ctx
 			cn.network = n
 			cn.conn = conn
-			cn.parser = &parser
+			cn.parser = mnet.NewSizedMessageParser()
 			cn.localAddr = conn.LocalAddr()
 			cn.remoteAddr = conn.RemoteAddr()
 			cn.closer = make(chan struct{}, 0)

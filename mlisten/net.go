@@ -80,9 +80,9 @@ func (cs *connReadWriter) Close() error {
 func (cs *connReadWriter) ReadConn() (net.Conn, error) {
 	cs.ml.Lock()
 	if cs.l == nil {
+		cs.ml.Unlock()
 		return nil, ErrListenerClosed
 	}
-
 	listener := cs.l
 	cs.ml.Unlock()
 

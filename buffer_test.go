@@ -97,6 +97,52 @@ func TestBufferedIntervalWriterWithTimedFlush(t *testing.T) {
 	tests.Passed("Should have failed to write message to writer.")
 }
 
+func TestBufferedPeeker(t *testing.T) {
+	content := []byte("Thunder world, Reckage before the dawn")
+	buff := mnet.NewBufferedPeeker(content)
+
+	if buff.Length() != len(content) {
+		tests.Failed("Should have same length has content")
+	}
+	tests.Passed("Should have same length has content")
+
+	buff.Peek(2)
+	if buff.Area() != len(content) {
+		tests.Failed("Should have same length has content")
+	}
+	tests.Passed("Should have same length has content")
+
+	next := buff.Next(2)
+	if !bytes.Equal(next, content[:2]) {
+		tests.Failed("Should match sub elements of same area")
+	}
+	tests.Passed("Should match sub elements of same area")
+
+	next = buff.Next(100)
+	if !bytes.Equal(next, content[2:]) {
+		tests.Failed("Should match sub elements of rest of slice")
+	}
+	tests.Passed("Should match sub elements of rest of slice")
+
+	if len(buff.Peek(2)) != 0 {
+		tests.Failed("Should have index way past length of slice")
+	}
+	tests.Passed("Should have index way past length of slice")
+
+	buff.Reverse(5)
+	if len(buff.Peek(2)) == 0 {
+		tests.Failed("Should have index way back within slice")
+	}
+	tests.Passed("Should have index way back within slice")
+
+	buff.Reverse(100)
+	next = buff.Next(2)
+	if !bytes.Equal(next, content[:2]) {
+		tests.Failed("Should match sub elements of same area")
+	}
+	tests.Passed("Should match sub elements of same area")
+}
+
 func TestSizeAppendBufferedWriter(t *testing.T) {
 	var writer bytes.Buffer
 	bu := mnet.NewSizeAppenBuffereddWriter(&writer, 512)
@@ -133,6 +179,74 @@ func TestSizeAppendBufferedWriter(t *testing.T) {
 		tests.Failed("Should have successfully matched written message with original")
 	}
 	tests.Passed("Should have successfully matched written message with original")
+}
+
+func TestSizedMessageParser(t *testing.T) {
+	var writer bytes.Buffer
+	bu := mnet.NewSizeAppenBuffereddWriter(&writer, 512)
+
+	message1 := []byte("Thunder world, Reckage before the dawn")
+	bu.Write(message1)
+	bu.Flush()
+
+	message2 := []byte("Thunder world the dawn")
+	bu.Write(message2)
+	bu.Flush()
+
+	message3 := []byte("Reckage before the dawn")
+	bu.Write(message3)
+	bu.Flush()
+
+	parser := mnet.NewSizedMessageParser()
+
+	if err := parser.Parse(writer.Bytes()); err != nil {
+		tests.FailedWithError(err, "Should have successfully parsed message")
+	}
+	tests.Passed("Should have successfully parsed message")
+
+	msg, err := parser.Next()
+	if err != nil {
+		tests.FailedWithError(err, "Should have received next message successfully")
+	}
+	tests.Passed("Should have received next message successfully")
+
+	if !bytes.Equal(message1, msg) {
+		tests.Info("Received: %+q", msg)
+		tests.Info("Expected: %+q", message1)
+		tests.Failed("Should have successfully matched message")
+	}
+	tests.Passed("Should have successfully matched message")
+
+	msg, err = parser.Next()
+	if err != nil {
+		tests.FailedWithError(err, "Should have received next message successfully")
+	}
+	tests.Passed("Should have received next message successfully")
+
+	if !bytes.Equal(message2, msg) {
+		tests.Info("Received: %+q", msg)
+		tests.Info("Expected: %+q", message1)
+		tests.Failed("Should have successfully matched message")
+	}
+	tests.Passed("Should have successfully matched message")
+
+	msg, err = parser.Next()
+	if err != nil {
+		tests.FailedWithError(err, "Should have received next message successfully")
+	}
+	tests.Passed("Should have received next message successfully")
+
+	if !bytes.Equal(message3, msg) {
+		tests.Info("Received: %+q", msg)
+		tests.Info("Expected: %+q", message1)
+		tests.Failed("Should have successfully matched message")
+	}
+	tests.Passed("Should have successfully matched message")
+
+	if _, err = parser.Next(); err == nil {
+		tests.Failed("Should have failed to get next message successfully")
+	}
+	tests.Passed("Should have failed to get next message successfully")
 }
 
 type writtenBuffer struct {

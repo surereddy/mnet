@@ -161,56 +161,26 @@ func (c Client) Reconnect(altAddr string) error {
 
 // Read reads the underline data into the provided slice.
 func (c Client) Read() ([]byte, error) {
-	c.Metrics.Emit(
-		metrics.WithID(c.ID),
-		metrics.Message("Client.Read"),
-		metrics.With("network", c.NID),
-	)
 	if c.ReaderFunc == nil {
 		return nil, ErrReadNotAllowed
 	}
 
 	data, err := c.ReaderFunc(c)
 	if err != nil {
-		c.Metrics.Emit(
-			metrics.WithID(c.ID),
-			metrics.Message("Client.Read"),
-			metrics.Error(err),
-			metrics.With("network", c.NID),
-			metrics.With("data", data),
-		)
 		return data, err
 	}
 
-	c.Metrics.Emit(
-		metrics.WithID(c.ID),
-		metrics.Message("Client.Read"),
-		metrics.With("network", c.NID),
-		metrics.With("data", data),
-	)
 	return data, nil
 }
 
 // Flush sends all accumulated message within clients buffer into
 // connection.
 func (c Client) Flush() error {
-	c.Metrics.Emit(
-		metrics.WithID(c.ID),
-		metrics.Message("Client.Flush"),
-		metrics.With("network", c.NID),
-	)
-
 	if c.FlushFunc == nil {
 		return ErrFlushNotAllowed
 	}
 
 	if err := c.FlushFunc(c); err != nil {
-		c.Metrics.Emit(
-			metrics.WithID(c.ID),
-			metrics.Message("Client.Flush"),
-			metrics.Error(err),
-			metrics.With("network", c.NID),
-		)
 		return err
 	}
 
@@ -234,31 +204,12 @@ func (c Client) Statistics() (Statistics, error) {
 
 // Write writes provided data into connection without any deadline.
 func (c Client) Write(data []byte) (int, error) {
-	c.Metrics.Emit(
-		metrics.WithID(c.ID),
-		metrics.Message("Client.Write"),
-		metrics.With("network", c.NID),
-	)
-
 	if c.WriteFunc == nil {
 		return 0, ErrWriteNotAllowed
 	}
 
-	c.Metrics.Emit(
-		metrics.WithID(c.ID),
-		metrics.Message("Client.Write"),
-		metrics.With("network", c.NID),
-		metrics.With("data", data),
-	)
-
 	count, err := c.WriteFunc(c, data)
 	if err != nil {
-		c.Metrics.Emit(
-			metrics.WithID(c.ID),
-			metrics.Message("Client.Write"),
-			metrics.Error(err),
-			metrics.With("network", c.NID),
-		)
 		return count, err
 	}
 
