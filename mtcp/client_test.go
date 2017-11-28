@@ -10,7 +10,7 @@ import (
 	"github.com/influx6/mnet/mtcp"
 )
 
-func TestClientConnectFunction(t *testing.T) {
+func TestClientConnect(t *testing.T) {
 	initMetrics()
 
 	ctx := context.New()
@@ -54,8 +54,8 @@ func TestClientConnectFunction(t *testing.T) {
 	tests.Passed("Should have successfully read reply from network")
 
 	expected := []byte("now publishing to [help]\r\n")
-	if !bytes.Equal(received, expected) {
-		tests.Info("Received: %+q", received)
+	if !bytes.Equal(res, expected) {
+		tests.Info("Received: %+q", res)
 		tests.Info("Expected: %+q", expected)
 		tests.FailedWithError(err, "Should have successfully matched expected data with received from network")
 	}
@@ -65,4 +65,7 @@ func TestClientConnectFunction(t *testing.T) {
 		tests.FailedWithError(cerr, "Should have successfully closed client connection")
 	}
 	tests.Passed("Should have successfully closed client connection")
+
+	ctx.Cancel()
+	netw.Wait()
 }

@@ -405,8 +405,8 @@ func (n *Network) runStream(stream melon.ConnReadWriteCloser) {
 				metrics.With("network", n.ID),
 				metrics.With("client_id", uuid),
 				metrics.Info("New Client Connection"),
-				metrics.With("local_addr", client.LocalAddr),
-				metrics.With("remote_addr", client.RemoteAddr),
+				metrics.With("local_addr", conn.LocalAddr()),
+				metrics.With("remote_addr", conn.RemoteAddr()),
 			)
 
 			var parser mnet.SizedMessageParser

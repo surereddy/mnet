@@ -155,6 +155,7 @@ func Connect(addr string, ops ...ConnectOptions) (mnet.Client, error) {
 	c.FlushFunc = network.flush
 	c.ReaderFunc = network.read
 	c.WriteFunc = network.write
+	c.CloseFunc = network.close
 	c.LocalAddrFunc = network.getLocalAddr
 	c.RemoteAddrFunc = network.getRemoteAddr
 	c.ReconnectionFunc = network.reconnect
@@ -267,7 +268,7 @@ func (cn *clientNetwork) close(cm mnet.Client) error {
 
 	cn.worker.Wait()
 
-	return cn.clientErr
+	return nil
 }
 
 func (cn *clientNetwork) write(cm mnet.Client, d []byte) (int, error) {
