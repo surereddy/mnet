@@ -23,6 +23,79 @@ const (
 // changes to a *clientNetwork type
 type ConnectOptions func(*clientNetwork)
 
+// TLSConfig sets the giving tls.Config to be used by the returned
+// client.
+func TLSConfig(config *tls.Config) ConnectOptions {
+	return func(cm *clientNetwork) {
+		cm.secure = true
+		cm.tls = config
+	}
+}
+
+// SecureConnection sets the clientNetwork to use a tls.Connection
+// regardless whether certificate is provided.
+func SecureConnection() ConnectOptions {
+	return func(cm *clientNetwork) {
+		cm.secure = true
+	}
+}
+
+// ClientWriteInterval sets the clientNetwork to use the provided value
+// as its write intervals for colasced/batch writing of send data.
+func ClientWriteInterval(dur time.Duration) ConnectOptions {
+	return func(cm *clientNetwork) {
+		cm.clientMaxWriteDeadline = dur
+	}
+}
+
+// ClientMaxBufferSize sets the clientNetwork to use the provided value
+// as its maximum buffer size for it's writer.
+func ClientMaxBufferSize(buffer int) ConnectOptions {
+	return func(cm *clientNetwork) {
+		cm.clientMaxWriteSize = buffer
+	}
+}
+
+// ClientInitialBuffer sets the clientNetwork to use the provided value
+// as its initial buffer size for it's writer.
+func ClientInitialBuffer(buffer int) ConnectOptions {
+	return func(cm *clientNetwork) {
+		cm.clientInitialWriteSize = buffer
+	}
+}
+
+// Metrics sets the metrics instance to be used by the client for
+// logging.
+func Metrics(m metrics.Metrics) ConnectOptions {
+	return func(cm *clientNetwork) {
+		cm.metrics = m
+	}
+}
+
+// KeepAliveTimeout sets the client to use given timeout for it's connection net.Dialer
+// keepAliveTimeout.
+func KeepAliveTimeout(dur time.Duration) ConnectOptions {
+	return func(cm *clientNetwork) {
+		cm.keepAliveTimeout = dur
+	}
+}
+
+// DialTimeout sets the client to use given timeout for it's connection net.Dialer
+// dial timeout.
+func DialTimeout(dur time.Duration) ConnectOptions {
+	return func(cm *clientNetwork) {
+		cm.dialTimeout = dur
+	}
+}
+
+// NetworkID sets the id used by the client connection for identifying the
+// associated network.
+func NetworkID(id string) ConnectOptions {
+	return func(cm *clientNetwork) {
+		cm.nid = id
+	}
+}
+
 // Connect is used to implement the client connection to connect to a
 // mtcp.Network. It implements all the method functions required
 // by the Client to communicate with the server. It understands
@@ -36,6 +109,8 @@ func Connect(addr string, ops ...ConnectOptions) (mnet.Client, error) {
 	for _, op := range ops {
 		op(network)
 	}
+
+	c.NID = network.nid
 
 	if network.metrics == nil {
 		network.metrics = metrics.New()
@@ -102,6 +177,7 @@ type clientNetwork struct {
 	clientInitialWriteSize int
 	secure                 bool
 	id                     string
+	nid                    string
 	addr                   string
 	localAddr              net.Addr
 	remoteAddr             net.Addr
@@ -143,6 +219,15 @@ func (cn *clientNetwork) getLocalAddr(cm mnet.Client) (net.Addr, error) {
 func (cn *clientNetwork) flush(cm mnet.Client) error {
 	err := cn.bw.Flush()
 	atomic.StoreInt64(&cn.totalWriteFlush, int64(cn.bw.Length()))
+	if err != nil && err != io.ErrShortWrite {
+		cn.metrics.Emit(
+			metrics.Error(err),
+			metrics.WithID(cn.id),
+			metrics.With("network", cn.nid),
+			metrics.Message("clientNetwork.flush"),
+		)
+		cn.close(cm)
+	}
 	return err
 }
 
@@ -153,6 +238,12 @@ func (cn *clientNetwork) close(cm mnet.Client) error {
 		return cn.clientErr
 	}
 	cn.cu.RUnlock()
+
+	cn.metrics.Emit(
+		metrics.WithID(cn.id),
+		metrics.With("network", cn.nid),
+		metrics.Message("clientNetwork.close"),
+	)
 
 	cn.cu.Lock()
 	conn := cn.conn
@@ -181,8 +272,14 @@ func (cn *clientNetwork) close(cm mnet.Client) error {
 
 func (cn *clientNetwork) write(cm mnet.Client, d []byte) (int, error) {
 	n, err := cn.bw.Write(d)
-	atomic.AddInt64(&cn.totalWriteFlush, int64(n))
+	atomic.AddInt64(&cn.totalWriteOut, int64(n))
 	if err != nil && err != io.ErrShortWrite {
+		cn.metrics.Emit(
+			metrics.Error(err),
+			metrics.WithID(cn.id),
+			metrics.With("network", cn.nid),
+			metrics.Message("clientNetwork.flush"),
+		)
 		cn.close(cm)
 	}
 	return n, err
@@ -204,6 +301,7 @@ func (cn *clientNetwork) readLoop(cm mnet.Client, conn net.Conn) {
 			cn.metrics.Emit(
 				metrics.Error(err),
 				metrics.WithID(cn.id),
+				metrics.With("network", cn.nid),
 				metrics.Message("Connection failed to read: closing"),
 			)
 			break
@@ -326,6 +424,14 @@ func (cn *clientNetwork) getConn(cm mnet.Client, addr string) (net.Conn, error) 
 	for {
 		conn, err = cn.dialer.Dial("tcp", addr)
 		if err != nil {
+			cn.metrics.Emit(
+				metrics.Error(err),
+				metrics.WithID(cn.id),
+				metrics.With("type", "tcp"),
+				metrics.With("addr", addr),
+				metrics.With("network", cn.nid),
+				metrics.Message("Connection: failed to connect"),
+			)
 			if netErr, ok := err.(net.Error); ok && netErr.Temporary() {
 				if lastSleep >= maxSleep {
 					return nil, err
