@@ -1,11 +1,7 @@
-benchmark                                    old ns/op     new ns/op     delta
-BenchmarkNonTLSNetworkWriteWithClient-4      273           56.0          -79.49%
-BenchmarkNonTLSNetworkWriteWithNetConn-4     8848          10098         +14.13%
-
-benchmark                                    old allocs     new allocs     delta
-BenchmarkNonTLSNetworkWriteWithClient-4      4              0              -100.00%
-BenchmarkNonTLSNetworkWriteWithNetConn-4     6              3              -50.00%
-
-benchmark                                    old bytes     new bytes     delta
-BenchmarkNonTLSNetworkWriteWithClient-4      160           0             -100.00%
-BenchmarkNonTLSNetworkWriteWithNetConn-4     211           105           -50.24%
+goos: darwin
+goarch: amd64
+pkg: github.com/influx6/mnet/mtcp
+BenchmarkNonTLSNetworkWriteWithClient-4    	30000000	        56.0 ns/op	 142.83 MB/s	       0 B/op	       0 allocs/op
+BenchmarkNonTLSNetworkWriteWithNetConn-4   	  200000	     10098 ns/op	   0.79 MB/s	     105 B/op	       3 allocs/op
+PASS
+ok  	github.com/influx6/mnet/mtcp	7.249s

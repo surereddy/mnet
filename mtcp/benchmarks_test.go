@@ -180,7 +180,7 @@ func sizedPayloadString(sz int) string {
 }
 
 func sizedPayload(sz int) []byte {
-	payload := make(sz + len(pub) + 1)
+	payload := make([]byte, sz+len(pub)+1)
 	copy(payload, pub)
 	copy(payload, space)
 	copy(payload, sizedBytes(sz))

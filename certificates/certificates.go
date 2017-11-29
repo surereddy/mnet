@@ -24,7 +24,6 @@ const (
 	reqcertKeyFileName         = "req_ca.key"
 	reqcertRootCAFileName      = "req_root_ca.key"
 	certTypeName               = "CERTIFICATE"
-	rootCertTypeName           = "ROOT_CERTIFICATE"
 	certKeyName                = "RSA PRIVATE KEY"
 )
 
@@ -106,8 +105,9 @@ func (sca SecondaryCertificateAuthority) RootCertificateRaw() ([]byte, error) {
 	if sca.RootCA == nil {
 		return nil, ErrNoRootCACertificate
 	}
+
 	return pem.EncodeToMemory(&pem.Block{
-		Type:  rootCertTypeName,
+		Type:  certTypeName,
 		Bytes: sca.RootCA.Raw,
 	}), nil
 }
@@ -130,7 +130,7 @@ func (sca SecondaryCertificateAuthority) CertificateRaw() ([]byte, error) {
 func (sca SecondaryCertificateAuthority) Raw() ([]byte, error) {
 	var rootCABuffer bytes.Buffer
 	if err := pem.Encode(&rootCABuffer, &pem.Block{
-		Type:  rootCertTypeName,
+		Type:  certTypeName,
 		Bytes: sca.RootCA.Raw,
 	}); err != nil {
 		return nil, err
@@ -682,7 +682,7 @@ func (ca *CertificateRequest) Load(store PersistenceStore) error {
 		return err
 	}
 
-	rootCertificate, err := decodePEMCertificate(rootCACert, rootCertTypeName)
+	rootCertificate, err := decodePEMCertificate(rootCACert, certTypeName)
 	if err != nil {
 		return err
 	}
@@ -859,9 +859,9 @@ func (ca *CertificateRequest) TLSCert() (tls.Certificate, error) {
 
 // Raw returns the whole CertificateAuthorty has a combined slice of bytes, with
 // total length and length of parts added at the beginning.
-// Format:
-// [LENGTH OF ALL DATA][2] [LENGTH OF CERTIFICATE REQUEST][2] [LENGTH OF CERTIFICATE RAW][2] [LENGTH OF ROOTCA KEY][2] [CERTIFICIATE][ROOTCA]
+// Format: [LENGTH OF ALL DATA][2] [LENGTH OF CERTIFICATE REQUEST][2] [LENGTH OF CERTIFICATE RAW][2] [LENGTH OF ROOTCA KEY][2] [CERTIFICIATE][ROOTCA]
 // The above format then can be pulled and split properly to ensure matching data.
+// WARNING: The private key is not included within the raw bytes.
 func (ca CertificateRequest) Raw() ([]byte, error) {
 	rootCA, err := ca.SecondaryCA.RootCertificateRaw()
 	if err != nil {
@@ -906,8 +906,9 @@ func (ca CertificateRequest) Raw() ([]byte, error) {
 }
 
 // FromRaw decodes the whole raw data into CertificateAuthorty, using the format below
-// Format: [LENGTH OF ALL DATA][2] [LENGTH OF CERTIFICATE RAW][2] [LENGTH OF PRIVATE KEY][2] [CERTIFICIATE][PRIVIATEKEY]
+// Format: [LENGTH OF ALL DATA][2] [LENGTH OF CERTIFICATE REQUEST][2] [LENGTH OF CERTIFICATE RAW][2] [LENGTH OF ROOTCA KEY][2] [CERTIFICIATE][ROOTCA]
 // The above format then can be pulled and split properly to ensure matching data.
+// WARNING: The private key is not included within the raw bytes.
 func (ca *CertificateRequest) FromRaw(raw []byte) error {
 	if len(raw) == 0 {
 		return ErrEmptyCARawSlice
@@ -970,7 +971,7 @@ func (ca *CertificateRequest) FromRaw(raw []byte) error {
 
 	ca.SecondaryCA.Certificate = certificate
 
-	rootCA, err := decodePEMCertificate(rootCert, rootCertTypeName)
+	rootCA, err := decodePEMCertificate(rootCert, certTypeName)
 	if err != nil {
 		return err
 	}

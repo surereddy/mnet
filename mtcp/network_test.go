@@ -8,7 +8,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -24,7 +23,6 @@ import (
 
 var (
 	events metrics.Metrics
-	space  = regexp.MustCompile("\\s")
 	dialer = &net.Dialer{Timeout: 2 * time.Second}
 )
 
@@ -109,12 +107,10 @@ func TestTLSNetworkWithNetConn(t *testing.T) {
 	}
 	tests.Passed("Should have successfully connected to network")
 
-	if tlsConn, ok := conn.(*tls.Conn); ok {
-		if err := tlsConn.Handshake(); err != nil {
-			tests.FailedWithError(err, "Should have successfully Handshaked tls connection")
-		}
-		tests.Passed("Should have successfully Handshaked tls connection")
+	if err := conn.Handshake(); err != nil {
+		tests.FailedWithError(err, "Should have successfully Handshaked tls connection")
 	}
+	tests.Passed("Should have successfully Handshaked tls connection")
 
 	payload := []byte("pub help")
 	if err := writeMessage(conn, payload); err != nil {

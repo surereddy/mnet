@@ -101,6 +101,21 @@ func TestCertificateRequestServiceForClient(t *testing.T) {
 		tests.FailedWithError(err, "Should have generated new CertificateRequest")
 	}
 	tests.Passed("Should have generated new CertificateRequest")
+
+	if _, err = reqCA.TLSCertPool(); err != nil {
+		tests.FailedWithError(err, "Should have successfully created x409.CertPool")
+	}
+	tests.Passed("Should have successfully created x409.CertPool")
+
+	if _, err = reqCA.TLSClientConfig(); err != nil {
+		tests.FailedWithError(err, "Should have successfully created client tls.Config")
+	}
+	tests.Passed("Should have successfully created client tls.Config")
+
+	if _, err = reqCA.TLSRootConfig(); err != nil {
+		tests.FailedWithError(err, "Should have successfully created root tls.Config")
+	}
+	tests.Passed("Should have successfully created root tls.Config")
 }
 
 func TestCertificateRequestServiceForServer(t *testing.T) {
@@ -145,6 +160,21 @@ func TestCertificateRequestServiceForServer(t *testing.T) {
 		tests.FailedWithError(err, "Should have generated new CertificateRequest")
 	}
 	tests.Passed("Should have generated new CertificateRequest")
+
+	if _, err = reqCA.TLSCertPool(); err != nil {
+		tests.FailedWithError(err, "Should have successfully created x409.CertPool")
+	}
+	tests.Passed("Should have successfully created x409.CertPool")
+
+	if _, err = reqCA.TLSClientConfig(); err != nil {
+		tests.FailedWithError(err, "Should have successfully created client tls.Config")
+	}
+	tests.Passed("Should have successfully created client tls.Config")
+
+	if _, err = reqCA.TLSRootConfig(); err != nil {
+		tests.FailedWithError(err, "Should have successfully created root tls.Config")
+	}
+	tests.Passed("Should have successfully created root tls.Config")
 }
 
 func TestCertificateRequestRawLoading(t *testing.T) {
@@ -190,6 +220,21 @@ func TestCertificateRequestRawLoading(t *testing.T) {
 	}
 	tests.Passed("Should have generated new CertificateRequest")
 
+	if _, err = reqCA.TLSCertPool(); err != nil {
+		tests.FailedWithError(err, "Should have successfully created x409.CertPool")
+	}
+	tests.Passed("Should have successfully created x409.CertPool")
+
+	if _, err = reqCA.TLSClientConfig(); err != nil {
+		tests.FailedWithError(err, "Should have successfully created client tls.Config")
+	}
+	tests.Passed("Should have successfully created client tls.Config")
+
+	if _, err = reqCA.TLSRootConfig(); err != nil {
+		tests.FailedWithError(err, "Should have successfully created root tls.Config")
+	}
+	tests.Passed("Should have successfully created root tls.Config")
+
 	raw, err := reqCA.Raw()
 	if err != nil {
 		tests.FailedWithError(err, "Should have generated raw version of CertificateRequest")
@@ -198,9 +243,10 @@ func TestCertificateRequestRawLoading(t *testing.T) {
 
 	var rca certificates.CertificateRequest
 	if err := rca.FromRaw(raw); err != nil {
-		tests.FailedWithError(err, "Should have read raw  of CertificateRequest")
+		tests.FailedWithError(err, "Should have read raw of CertificateRequest")
 	}
 	tests.Passed("Should have read raw  of CertificateRequest")
+
 }
 
 func TestCertificateService(t *testing.T) {

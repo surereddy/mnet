@@ -73,19 +73,19 @@ func TestNonTLSNetworkWithClient(t *testing.T) {
 func TestTLSNetworkWithClient(t *testing.T) {
 	initMetrics()
 
-	_, server, client, err := createTLSCA()
+	_, serverca, clientca, err := createTLSCA()
 	if err != nil {
 		tests.FailedWithError(err, "Should have successfully created server and client certs")
 	}
 	tests.Passed("Should have successfully created server and client certs")
 
-	serverTls, err := server.TLSRootConfig()
+	serverTls, err := serverca.TLSRootConfig()
 	if err != nil {
 		tests.FailedWithError(err, "Should have successfully create sever's tls config")
 	}
 	tests.Passed("Should have successfully create sever's tls config")
 
-	clientTls, err := client.TLSClientConfig()
+	clientTls, err := clientca.TLSClientConfig()
 	if err != nil {
 		tests.FailedWithError(err, "Should have successfully create sever's tls config")
 	}
