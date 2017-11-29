@@ -20,16 +20,21 @@ var ErrItemsInBuffer = errors.New("buffer has pending content")
 // as much writes is collected before hitting final writer to
 // minimal write calls for buffer.
 type BufferedIntervalWriter struct {
-	timer        *time.Timer
-	w            io.Writer
-	dur          time.Duration
-	mu           sync.RWMutex
-	timerStopped bool
-	buff         []byte
-	c            int
-	err          error
-	size         int
-	inb          int64
+	timer                   *time.Timer
+	w                       io.Writer
+	dur                     time.Duration
+	mu                      sync.RWMutex
+	timerStopped            bool
+	buff                    []byte
+	c                       int
+	err                     error
+	size                    int
+	totalReceived           int64
+	totalFlushed            int64
+	totalWrittenDirectlyToW int64
+	lastWrittenDirectlyToW  int64
+	lastFlushed             int64
+	lastWritten             int64
 }
 
 // NewBufferedIntervalWriter returns new BufferedIntervalWriter whoes has at least the specified size.
@@ -68,57 +73,6 @@ func (bu *BufferedIntervalWriter) Reset(w io.Writer) error {
 	return nil
 }
 
-// Flush sends given data into underline writer.
-func (bu *BufferedIntervalWriter) Flush() error {
-	bu.mu.Lock()
-
-	if bu.err != nil {
-		bu.mu.Unlock()
-		return bu.err
-	}
-
-	if bu.c == 0 {
-		bu.mu.Unlock()
-		return nil
-	}
-
-	if bu.w == nil {
-		bu.mu.Unlock()
-		return nil
-	}
-
-	bu.timer.Reset(bu.dur)
-
-	n, err := bu.w.Write(bu.buff[0:bu.c])
-	if err == nil && n < bu.c {
-		err = io.ErrShortWrite
-	}
-
-	if err != nil {
-		if n != 0 && n < bu.c {
-			copy(bu.buff[:bu.c-n], bu.buff[n:bu.c])
-			bu.c -= n
-		}
-
-		if err != io.ErrShortWrite {
-			bu.err = err
-		}
-
-		bu.mu.Unlock()
-		atomic.StoreInt64(&bu.inb, int64(bu.c))
-		bu.timer.Stop()
-
-		return err
-	}
-
-	bu.c = 0
-	atomic.StoreInt64(&bu.inb, 0)
-	bu.buff = bu.buff[:0]
-	bu.mu.Unlock()
-
-	return nil
-}
-
 // StopTimer stops the internal flush timer of the writer.
 func (bu *BufferedIntervalWriter) StopTimer() error {
 	bu.timer.Stop()
@@ -128,41 +82,29 @@ func (bu *BufferedIntervalWriter) StopTimer() error {
 	return nil
 }
 
-// Close closes the BufferedIntervalWriter, stops the timer, clears
-// all references and sets an err ensuring the instance can not be
-// re-used.
-func (bu *BufferedIntervalWriter) Close() error {
-	bu.mu.Lock()
+// Flushed returns total flushed in bytes into buffer since start.
+func (bu *BufferedIntervalWriter) Flushed() int {
+	return int(atomic.LoadInt64(&bu.totalFlushed))
+}
 
-	if bu.err != nil {
-		bu.mu.Unlock()
-		return bu.err
-	}
+// LastWrittenDirectly returns total written in bytes straight to writer instead of buffer since start.
+func (bu *BufferedIntervalWriter) LastWrittenDirectly() int {
+	return int(atomic.LoadInt64(&bu.lastWrittenDirectlyToW))
+}
 
-	bu.timer.Stop()
-	bu.timer = nil
-	bu.mu.Unlock()
+// WrittenDirectly returns total written in bytes straight to writer instead of buffer since start.
+func (bu *BufferedIntervalWriter) WrittenDirectly() int {
+	return int(atomic.LoadInt64(&bu.totalWrittenDirectlyToW))
+}
 
-	bu.Flush()
-
-	bu.mu.Lock()
-	defer bu.mu.Unlock()
-	if bu.err != nil {
-		return bu.err
-	}
-
-	bu.buff = nil
-	bu.c = 0
-	bu.w = nil
-
-	bu.err = io.ErrClosedPipe
-
-	return nil
+// Written returns total written in bytes into buffer since start.
+func (bu *BufferedIntervalWriter) Written() int {
+	return int(atomic.LoadInt64(&bu.totalReceived))
 }
 
 // Length returns the current total length of items in buffer.
 func (bu *BufferedIntervalWriter) Length() int {
-	return int(atomic.LoadInt64(&bu.inb))
+	return int(atomic.LoadInt64(&bu.lastWritten))
 }
 
 // Write writes given data into internal buffer ensuring writes
@@ -193,6 +135,8 @@ func (bu *BufferedIntervalWriter) Write(d []byte) (int, error) {
 		}
 
 		n, err := bu.w.Write(d)
+		atomic.StoreInt64(&bu.lastWrittenDirectlyToW, int64(n))
+		atomic.AddInt64(&bu.totalWrittenDirectlyToW, int64(n))
 		if n < dLen && err == nil {
 			err = io.ErrShortWrite
 		}
@@ -210,12 +154,104 @@ func (bu *BufferedIntervalWriter) Write(d []byte) (int, error) {
 	bu.timer.Reset(bu.dur)
 
 	copied := copy(bu.buff[bu.c:bu.size], d)
+	atomic.AddInt64(&bu.totalReceived, int64(copied))
+	atomic.AddInt64(&bu.lastWritten, int64(copied))
+
 	bu.c += copied
-	atomic.StoreInt64(&bu.inb, int64(bu.c))
 	bu.buff = bu.buff[0:bu.c]
 	bu.mu.Unlock()
 
 	return copied, nil
+}
+
+// Flush sends given data into underline writer.
+func (bu *BufferedIntervalWriter) Flush() error {
+	bu.mu.Lock()
+
+	if bu.err != nil {
+		bu.mu.Unlock()
+		return bu.err
+	}
+
+	if bu.c == 0 {
+		bu.mu.Unlock()
+		return nil
+	}
+
+	if bu.w == nil {
+		bu.mu.Unlock()
+		return nil
+	}
+
+	bu.timer.Reset(bu.dur)
+
+	n, err := bu.w.Write(bu.buff[0:bu.c])
+	atomic.AddInt64(&bu.totalFlushed, int64(n))
+	atomic.StoreInt64(&bu.lastFlushed, int64(n))
+	if err == nil && n < bu.c {
+		err = io.ErrShortWrite
+	}
+
+	if err != nil {
+		if n != 0 && n < bu.c {
+			copy(bu.buff[:bu.c-n], bu.buff[n:bu.c])
+			bu.c -= n
+		}
+
+		if err != io.ErrShortWrite {
+			bu.err = err
+		}
+
+		bu.mu.Unlock()
+		bu.timer.Stop()
+
+		return err
+	}
+
+	bu.c = 0
+	bu.buff = bu.buff[:0]
+	atomic.StoreInt64(&bu.lastWritten, 0)
+
+	bu.mu.Unlock()
+
+	return nil
+}
+
+// Close closes the BufferedIntervalWriter, stops the timer, clears
+// all references and sets an err ensuring the instance can not be
+// re-used.
+func (bu *BufferedIntervalWriter) Close() error {
+	bu.mu.Lock()
+
+	if bu.err != nil {
+		bu.mu.Unlock()
+		return bu.err
+	}
+
+	bu.timer.Stop()
+	bu.timer = nil
+	bu.mu.Unlock()
+
+	bu.Flush()
+
+	bu.mu.Lock()
+	defer bu.mu.Unlock()
+	if bu.err != nil {
+		return bu.err
+	}
+
+	bu.buff = nil
+	bu.c = 0
+	bu.w = nil
+	bu.totalFlushed = 0
+	bu.totalReceived = 0
+	bu.totalWrittenDirectlyToW = 0
+	bu.lastFlushed = 0
+	bu.lastWritten = 0
+
+	bu.err = io.ErrClosedPipe
+
+	return nil
 }
 
 // SizeAppendBufferredWriter implements a custom buffer ontop of a given io.Writer, where

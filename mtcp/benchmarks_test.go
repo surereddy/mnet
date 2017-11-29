@@ -156,6 +156,7 @@ func benchThis(b *testing.B, payload []byte) {
 
 	b.SetBytes(int64(len(payload)))
 	b.StartTimer()
+
 	for i := 0; i < b.N; i++ {
 		client.Write(payload)
 	}
@@ -192,4 +193,15 @@ func sizedBytes(sz int) []byte {
 
 func sizedString(sz int) string {
 	return string(sizedBytes(sz))
+}
+
+type writtenBuffer struct {
+	c            int
+	totalWritten int
+}
+
+func (b *writtenBuffer) Write(d []byte) (int, error) {
+	b.c += 1
+	b.totalWritten += len(d)
+	return len(d), nil
 }

@@ -33,29 +33,26 @@ const (
 	// read loop.
 	MinBufferSize = 512
 
-	// HighMinBufferSize sets a higher initial range for buffer space.
-	HighMinBufferSize = 712
-
 	// MaxBufferSize sets the maximum size allowed for all reads
 	// used in the readloop of a client's net.Conn.
-	MaxBufferSize = 1024 * MinBufferSize
+	MaxBufferSize = 9560
 
 	// ClientCollectBufferSize sets the collecting buffer size of a Clients.Write
 	// which will be helded till Flushed, unless the size of data had exceeded
 	// this size, then rest data gets flushed. Always ensure data written is
 	// within this given size or split properly.
-	ClientCollectBufferSize = 1024 * MinBufferSize
+	ClientCollectBufferSize = 25720
 
 	// ClientMaxNetConnWriteBuffer sets the maximum allowed buffer size for the interval
 	// writer which limits total call to net.Conn.Write. The buffer collects
 	// data till the ClientMaxNetConnWriteBuffer and writes such to the net.Conn.
-	ClientMaxNetConnWriteBuffer = 1024 * HighMinBufferSize
+	ClientMaxNetConnWriteBuffer = 66456
 
 	// ClientWriteNetConnDeadline sets the maximum time to await a call to Client.Flush
 	// which will reset the writer to collect more data before writing. This helps
 	// to both buffer writting data and minimize calls to net.Conn.Write and improve
 	// performance.
-	ClientWriteNetConnDeadline = 600 * time.Millisecond
+	ClientWriteNetConnDeadline = 400 * time.Millisecond
 )
 
 type message struct {

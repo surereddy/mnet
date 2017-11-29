@@ -1,18 +1,13 @@
-goos: darwin
-goarch: amd64
-pkg: github.com/influx6/mnet/mtcp
-BenchmarkNonTLSNetworkWriteWithClient-4    	30000000	        58.5 ns/op	 136.79 MB/s	       0 B/op	       0 allocs/op
-BenchmarkNonTLSNetworkWriteWithNetConn-4   	  200000	     10016 ns/op	   0.80 MB/s	     138 B/op	       3 allocs/op
-BenchmarkNoBytesMessages-4                 	30000000	        55.0 ns/op	  72.70 MB/s	       0 B/op	       0 allocs/op
-Benchmark2BytesMessages-4                  	20000000	        58.4 ns/op	 102.83 MB/s	       0 B/op	       0 allocs/op
-Benchmark8BytesMessages-4                  	20000000	        66.6 ns/op	 180.09 MB/s	       0 B/op	       0 allocs/op
-Benchmark16BytesMessages-4                 	20000000	        73.7 ns/op	 271.25 MB/s	       0 B/op	       0 allocs/op
-Benchmark32BytesMessages-4                 	20000000	        89.3 ns/op	 403.21 MB/s	       0 B/op	       0 allocs/op
-Benchmark64BytesMessages-4                 	20000000	       122 ns/op	 553.03 MB/s	       0 B/op	       0 allocs/op
-Benchmark128BytesMessages-4                	10000000	       224 ns/op	 587.28 MB/s	       0 B/op	       0 allocs/op
-Benchmark256BytesMessages-4                	 3000000	       461 ns/op	 563.32 MB/s	       1 B/op	       0 allocs/op
-Benchmark1KMessages-4                      	 1000000	      1840 ns/op	 558.48 MB/s	       2 B/op	       0 allocs/op
-Benchmark4KMessages-4                      	  200000	      6533 ns/op	 627.51 MB/s	      13 B/op	       0 allocs/op
-Benchmark8KMessages-4                      	  100000	     14562 ns/op	 562.81 MB/s	      26 B/op	       0 allocs/op
-PASS
-ok  	github.com/influx6/mnet/mtcp	43.833s
+enchmarkNonTLSNetworkWriteWithClient-4    	30000000	        58.0 ns/op	 137.82 MB/s	       0 B/op	       0 allocs/op
+BenchmarkNonTLSNetworkWriteWithNetConn-4   	  200000	      8545 ns/op	   0.94 MB/s	      86 B/op	       2 allocs/op
+BenchmarkNoBytesMessages-4                 	30000000	        53.7 ns/op	  74.43 MB/s	       0 B/op	       0 allocs/op
+Benchmark2BytesMessages-4                  	30000000	        55.4 ns/op	 108.25 MB/s	       0 B/op	       0 allocs/op
+Benchmark8BytesMessages-4                  	20000000	        63.6 ns/op	 188.82 MB/s	       0 B/op	       0 allocs/op
+Benchmark16BytesMessages-4                 	20000000	        77.1 ns/op	 259.55 MB/s	       0 B/op	       0 allocs/op
+Benchmark32BytesMessages-4                 	20000000	        93.9 ns/op	 383.58 MB/s	       0 B/op	       0 allocs/op
+Benchmark64BytesMessages-4                 	20000000	       100 ns/op	 679.69 MB/s	       0 B/op	       0 allocs/op
+Benchmark128BytesMessages-4                	10000000	       190 ns/op	 693.27 MB/s	       0 B/op	       0 allocs/op
+Benchmark256BytesMessages-4                	 5000000	       370 ns/op	 701.71 MB/s	       0 B/op	       0 allocs/op
+Benchmark1KMessages-4                      	 1000000	      1442 ns/op	 712.60 MB/s	       0 B/op	       0 allocs/op
+Benchmark4KMessages-4                      	  300000	      5707 ns/op	 718.34 MB/s	       0 B/op	       0 allocs/op
+Benchmark8KMessages-4                      	  200000	     11575 ns/op	 708.04 MB/s	       1 B/op	       0 allocs/op
