@@ -17,7 +17,7 @@ Mnet has the (mtcp)(./mtcp) package which implements a lightweight network and c
 with data buffering techniques, it ensures you transfer massive data within the nanosecond range.
 
 - [Benchmarks](./mtcp/benchmark.txt)
-Below is a benchmark of `mtcp` running on top of golang 1.9.
+Below is a benchmark of `mtcp` running with golang version `1.9.2` on OS X 10.12.6.
 
 ```bash
 goos: darwin

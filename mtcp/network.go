@@ -342,7 +342,15 @@ func (n *Network) endLogic(ctx context.CancelContext, stream melon.ConnReadWrite
 	for _, conn := range n.clients {
 		conn.closeConnection()
 	}
-	stream.Close()
+
+	if err := stream.Close(); err != nil {
+		n.Metrics.Emit(
+			metrics.Error(err),
+			metrics.Message("Network.endLogic"),
+			metrics.With("network", n.ID),
+			metrics.WithID(n.ID),
+		)
+	}
 }
 
 // Statistics returns statics associated with Network.

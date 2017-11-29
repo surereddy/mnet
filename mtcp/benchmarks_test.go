@@ -146,13 +146,13 @@ func benchThis(b *testing.B, payload []byte) {
 	b.StopTimer()
 
 	ctx := context.New()
-	netw, err := createNewNetwork(ctx, ":5050", nil)
+	netw, err := createNewNetwork(ctx, "localhost:5050", nil)
 	if err != nil {
 		b.Fatalf("Failed to create network: %+q", err)
 		return
 	}
 
-	client, err := mtcp.Connect(":5050", mtcp.Metrics(events), mtcp.ClientWriteInterval(1*time.Second))
+	client, err := mtcp.Connect("localhost:5050", mtcp.Metrics(events), mtcp.ClientWriteInterval(1*time.Second))
 	if err != nil {
 		b.Fatalf("Failed to dial network %+q", err)
 		return
