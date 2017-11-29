@@ -64,9 +64,6 @@ func BenchmarkNonTLSNetworkWriteWithNetConn(b *testing.B) {
 	b.SetBytes(int64(len(payload)))
 	for i := 0; i < b.N; i++ {
 		writeMessage(conn, payload)
-		if i%100 == 0 {
-			time.Sleep(1 * time.Nanosecond)
-		}
 	}
 
 	b.StopTimer()
@@ -151,27 +148,27 @@ func benchThis(b *testing.B, payload []byte) {
 		return
 	}
 
-	client, err := mtcp.Connect("localhost:5050", mtcp.Metrics(events), mtcp.ClientWriteInterval(1*time.Second))
+	client, err := mtcp.Connect("localhost:5050", mtcp.Metrics(events))
 	if err != nil {
 		b.Fatalf("Failed to dial network %+q", err)
 		return
 	}
 
-	b.StartTimer()
 	b.SetBytes(int64(len(payload)))
+	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		client.Write(payload)
 	}
 
 	client.Flush()
+
 	b.StopTimer()
 	client.Close()
 	ctx.Cancel()
 	netw.Wait()
 }
 
-var pub = []byte("pub")
-var space = []byte(" ")
+var pub = []byte("pub ")
 var ch = []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@$#%^&*()")
 
 func sizedPayloadString(sz int) string {
@@ -179,9 +176,8 @@ func sizedPayloadString(sz int) string {
 }
 
 func sizedPayload(sz int) []byte {
-	payload := make([]byte, sz+len(pub)+1)
+	payload := make([]byte, sz+len(pub))
 	copy(payload, pub)
-	copy(payload, space)
 	copy(payload, sizedBytes(sz))
 	return payload
 }

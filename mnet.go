@@ -2,6 +2,7 @@ package mnet
 
 import (
 	"errors"
+	"fmt"
 	"net"
 
 	"github.com/influx6/faux/metrics"
@@ -59,14 +60,44 @@ var (
 // Statistics defines a struct ment to hold granular information regarding
 // network activities.
 type Statistics struct {
-	TotalWrittenMessages int64
-	TotalReadMessages    int64
-	TotalWrittenInBytes  int64
-	TotalReadInBytes     int64
-	TotalFlushedInBytes  int64
-	TotalClients         int64
-	TotalClientsClosed   int64
-	TotalReconnects      int64
+	TotalWrittenMessages      int64
+	TotalReadMessages         int64
+	TotalWrittenInBytes       int64
+	TotalReadInBytes          int64
+	TotalBytesInBuffer        int64
+	TotalBytesInCollectBuffer int64
+	TotalFlushedInBytes       int64
+	TotalClients              int64
+	TotalClientsClosed        int64
+	TotalReconnects           int64
+	TotalFailedReconnects     int64
+}
+
+// String returns string version of Statistics.
+func (s Statistics) String() string {
+	return fmt.Sprintf(`TotalClients: %d
+TotalClientsClosed: %d
+TotalReconnects: %d
+TotalFailedReconnects: %d
+TotalMessagesWritten: %d
+TotalMessagesRead: %d
+TotalBytesWritten: %d Bytes
+TotalBytesRead: %d Bytes
+TotalBytesInClientBuffer: %d Bytes
+TotalBytesInClientCollectBuffer: %d Bytes
+TotalBytesFlushed: %d Bytes`,
+		s.TotalClients,
+		s.TotalClientsClosed,
+		s.TotalReconnects,
+		s.TotalFailedReconnects,
+		s.TotalWrittenMessages,
+		s.TotalReadMessages,
+		s.TotalWrittenInBytes,
+		s.TotalReadInBytes,
+		s.TotalBytesInBuffer,
+		s.TotalBytesInCollectBuffer,
+		s.TotalFlushedInBytes,
+	)
 }
 
 // Client holds a given information regarding a given network connection.

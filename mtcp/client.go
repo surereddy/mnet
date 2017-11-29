@@ -121,6 +121,7 @@ func Connect(addr string, ops ...ConnectOptions) (mnet.Client, error) {
 
 	c.NID = network.nid
 
+	network.totalreconnects = -1
 	if network.tls != nil && !network.tls.InsecureSkipVerify {
 		network.tls.ServerName = host
 	}
@@ -183,6 +184,10 @@ type clientNetwork struct {
 	totalReadIn             int64
 	totalWriteOut           int64
 	totalWriteFlush         int64
+	totalInBuff             int64
+	totalreconnects         int64
+	totalbadreconnects      int64
+	totalInCBuff            int64
 	dialTimeout             time.Duration
 	keepAliveTimeout        time.Duration
 	clientMaxWriteSize      int
@@ -213,6 +218,10 @@ func (cn *clientNetwork) getStatistics(cm mnet.Client) (mnet.Statistics, error) 
 	stats.TotalReadInBytes = atomic.LoadInt64(&cn.totalReadIn)
 	stats.TotalFlushedInBytes = atomic.LoadInt64(&cn.totalWriteFlush)
 	stats.TotalWrittenInBytes = atomic.LoadInt64(&cn.totalWriteOut)
+	stats.TotalBytesInBuffer = atomic.LoadInt64(&cn.totalInBuff)
+	stats.TotalReconnects = atomic.LoadInt64(&cn.totalreconnects)
+	stats.TotalFailedReconnects = atomic.LoadInt64(&cn.totalbadreconnects)
+	stats.TotalBytesInCollectBuffer = atomic.LoadInt64(&cn.totalInCBuff)
 	return stats, nil
 }
 
@@ -229,8 +238,10 @@ func (cn *clientNetwork) getLocalAddr(cm mnet.Client) (net.Addr, error) {
 }
 
 func (cn *clientNetwork) flush(cm mnet.Client) error {
-	err := cn.bw.Flush()
 	atomic.StoreInt64(&cn.totalWriteFlush, int64(cn.bw.TotalFlushed()))
+	atomic.StoreInt64(&cn.totalInCBuff, int64(cn.bw.LengthInBuffer()))
+	atomic.StoreInt64(&cn.totalInBuff, int64(cn.buffWriter.Length()))
+	err := cn.bw.Flush()
 	if err != nil && err != io.ErrShortWrite {
 		cn.metrics.Emit(
 			metrics.Error(err),
@@ -265,7 +276,7 @@ func (cn *clientNetwork) close(cm mnet.Client) error {
 	cn.do.Do(func() {
 		cn.buffWriter.StopTimer()
 
-		conn.SetWriteDeadline(time.Now().Add(3 * time.Second))
+		conn.SetWriteDeadline(time.Now().Add(MaxFlushDeadline))
 		cn.buffWriter.Flush()
 		conn.SetWriteDeadline(time.Time{})
 		cn.buffWriter.Reset(&cn.scratch)
@@ -353,6 +364,8 @@ func (cn *clientNetwork) reconnect(cm mnet.Client, altAddr string) error {
 	}
 	cn.cu.RUnlock()
 
+	atomic.AddInt64(&cn.totalreconnects, 1)
+
 	// ensure we really have stopped loop.
 	cn.worker.Wait()
 
@@ -372,6 +385,7 @@ func (cn *clientNetwork) reconnect(cm mnet.Client, altAddr string) error {
 
 	// If failure was met, then return error and go-offline again.
 	if err != nil {
+		atomic.AddInt64(&cn.totalbadreconnects, 1)
 		return err
 	}
 

@@ -25,10 +25,16 @@ const (
 	// take when facing a Temporary net error.
 	MaxTemporarySleep = 1 * time.Second
 
+	// MaxFlushDeadline sets the maximum, allowed duration for flushing data
+	MaxFlushDeadline = 2 * time.Second
+
 	// MinBufferSize sets the initial size of space of the slice
 	// used to read in content from a net.Conn in the connections
 	// read loop.
 	MinBufferSize = 512
+
+	// HighMinBufferSize sets a higher initial range for buffer space.
+	HighMinBufferSize = 712
 
 	// MaxBufferSize sets the maximum size allowed for all reads
 	// used in the readloop of a client's net.Conn.
@@ -43,7 +49,7 @@ const (
 	// ClientMaxNetConnWriteBuffer sets the maximum allowed buffer size for the interval
 	// writer which limits total call to net.Conn.Write. The buffer collects
 	// data till the ClientMaxNetConnWriteBuffer and writes such to the net.Conn.
-	ClientMaxNetConnWriteBuffer = 1024 * 1024
+	ClientMaxNetConnWriteBuffer = 1024 * HighMinBufferSize
 
 	// ClientWriteNetConnDeadline sets the maximum time to await a call to Client.Flush
 	// which will reset the writer to collect more data before writing. This helps
@@ -70,6 +76,8 @@ type networkConn struct {
 	totalReadIn   int64
 	totalWriteOut int64
 	totalFlushOut int64
+	totalInBuff   int64
+	totalInCBuff  int64
 
 	network *Network
 
@@ -88,6 +96,8 @@ func (nc *networkConn) getStatistics(cm mnet.Client) (mnet.Statistics, error) {
 	stats.TotalFlushedInBytes = atomic.LoadInt64(&nc.totalFlushOut)
 	stats.TotalWrittenInBytes = atomic.LoadInt64(&nc.totalWriteOut)
 	stats.TotalClientsClosed = atomic.LoadInt64(&nc.network.totalClosedClients)
+	stats.TotalBytesInBuffer = atomic.LoadInt64(&nc.totalInBuff)
+	stats.TotalBytesInCollectBuffer = atomic.LoadInt64(&nc.totalInCBuff)
 	return stats, nil
 }
 
@@ -130,7 +140,7 @@ func (nc *networkConn) closeConnection() error {
 	nc.do.Do(func() {
 		// nc.bw.Flush()
 		nc.buffWriter.StopTimer()
-		nc.conn.SetWriteDeadline(time.Now().Add(3 * time.Second))
+		nc.conn.SetWriteDeadline(time.Now().Add(MaxFlushDeadline))
 		nc.buffWriter.Flush()
 		nc.conn.SetWriteDeadline(time.Time{})
 		nc.buffWriter.Reset(nil)
@@ -179,6 +189,8 @@ func (nc *networkConn) flush(cm mnet.Client) error {
 	}
 
 	atomic.StoreInt64(&nc.totalFlushOut, int64(nc.bw.TotalFlushed()))
+	atomic.StoreInt64(&nc.totalInCBuff, int64(nc.bw.LengthInBuffer()))
+	atomic.StoreInt64(&nc.totalInBuff, int64(nc.buffWriter.Length()))
 	return nc.bw.Flush()
 }
 

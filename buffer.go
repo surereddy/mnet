@@ -29,6 +29,7 @@ type BufferedIntervalWriter struct {
 	c            int
 	err          error
 	size         int
+	inb          int64
 }
 
 // NewBufferedIntervalWriter returns new BufferedIntervalWriter whoes has at least the specified size.
@@ -41,7 +42,6 @@ func NewBufferedIntervalWriter(w io.Writer, bufferSize int, writeInterval time.D
 	}
 
 	bu.timer = time.AfterFunc(writeInterval, func() { bu.Flush() })
-
 	return bu
 }
 
@@ -71,17 +71,19 @@ func (bu *BufferedIntervalWriter) Reset(w io.Writer) error {
 // Flush sends given data into underline writer.
 func (bu *BufferedIntervalWriter) Flush() error {
 	bu.mu.Lock()
-	defer bu.mu.Unlock()
 
 	if bu.err != nil {
+		bu.mu.Unlock()
 		return bu.err
 	}
 
 	if bu.c == 0 {
+		bu.mu.Unlock()
 		return nil
 	}
 
 	if bu.w == nil {
+		bu.mu.Unlock()
 		return nil
 	}
 
@@ -102,12 +104,18 @@ func (bu *BufferedIntervalWriter) Flush() error {
 			bu.err = err
 		}
 
+		bu.mu.Unlock()
+		atomic.StoreInt64(&bu.inb, int64(bu.c))
 		bu.timer.Stop()
+
 		return err
 	}
 
 	bu.c = 0
+	atomic.StoreInt64(&bu.inb, 0)
 	bu.buff = bu.buff[:0]
+	bu.mu.Unlock()
+
 	return nil
 }
 
@@ -154,9 +162,7 @@ func (bu *BufferedIntervalWriter) Close() error {
 
 // Length returns the current total length of items in buffer.
 func (bu *BufferedIntervalWriter) Length() int {
-	bu.mu.RLock()
-	defer bu.mu.RUnlock()
-	return bu.c
+	return int(atomic.LoadInt64(&bu.inb))
 }
 
 // Write writes given data into internal buffer ensuring writes
@@ -181,7 +187,7 @@ func (bu *BufferedIntervalWriter) Write(d []byte) (int, error) {
 	dLen := len(d)
 	nextSize := bu.c + dLen
 
-	if nextSize >= bu.size {
+	if nextSize > bu.size {
 		if bu.w == nil {
 			return 0, ErrWriteNotAllowed
 		}
@@ -205,6 +211,7 @@ func (bu *BufferedIntervalWriter) Write(d []byte) (int, error) {
 
 	copied := copy(bu.buff[bu.c:bu.size], d)
 	bu.c += copied
+	atomic.StoreInt64(&bu.inb, int64(bu.c))
 	bu.buff = bu.buff[0:bu.c]
 	bu.mu.Unlock()
 
