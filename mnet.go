@@ -81,7 +81,6 @@ type Client struct {
 	CloseFunc        ClientFunc
 	SiblingsFunc     ClientSiblingsFunc
 	StatisticFunc    ClientStatisticsFunc
-	ExpandBufferFunc ClientExpandBufferFunc
 	ReconnectionFunc ClientReconnectionFunc
 }
 
@@ -162,21 +161,6 @@ func (c Client) Reconnect(altAddr string) error {
 	}
 
 	return nil
-}
-
-// ExpandBuffer allows client to expand internal collecting
-// buffer before any writes, else fails to expand buffer once
-// write has being done. It is an expensive operation, has it does
-// a new memory allocation, so be careful how you use it.
-// It allows the internal collecting buffer to be expand to fit
-// new size.
-// WARNING: Remember once expansion is done, it can not be reversed.
-func (c Client) ExpandBuffer(toSize int) error {
-	if c.ExpandBufferFunc == nil {
-		return ErrBufferExpansionNotAllowed
-	}
-
-	return c.ExpandBufferFunc(c, toSize)
 }
 
 // Read reads the underline data into the provided slice.

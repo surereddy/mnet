@@ -9,6 +9,10 @@ import (
 	"time"
 )
 
+// ErrItemsInBuffer sets error to be returned if attempts are made to expand buffer
+// while items exist in it.
+var ErrItemsInBuffer = errors.New("buffer has pending content")
+
 // BufferedIntervalWriter implements a interval buffering writer which
 // given the provided size will fill it's buffer until either
 // content reach given size or given duration is met for flushing.
@@ -239,29 +243,6 @@ func NewSizeAppenBuffereddWriter(w io.Writer, maxBufferSize int) *SizeAppendBuff
 		fl:   0,
 		m:    maxBufferSize,
 	}
-}
-
-// ErrItemsInBuffer sets error to be returned if attempts are made to expand buffer
-// while items exist in it.
-var ErrItemsInBuffer = errors.New("buffer has pending content")
-
-// Expand attempts to increase size of buffer, if size val is small, then it is
-// ignored. This allows fine control of total data collect and allows user to
-// ensure all fits within buffer.
-func (wb *SizeAppendBufferredWriter) Expand(toSize int) error {
-	if wb.LengthInBuffer() != 0 {
-		return ErrItemsInBuffer
-	}
-
-	if wb.m >= toSize {
-		return nil
-	}
-
-	toSize += 2
-	newBuff := make([]byte, 2, toSize)
-	wb.m = toSize
-	wb.data = newBuff
-	return nil
 }
 
 // LengthInBuffer returns current length of items in buffer.

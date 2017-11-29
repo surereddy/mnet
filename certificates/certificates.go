@@ -191,11 +191,7 @@ func (ca CertificateAuthority) ApproveServerClientCertificateSigningRequest(req 
 	secondaryCA.Certificate = certificate
 	secondaryCA.RootCA = ca.Certificate
 
-	if err := req.ValidateAndAccept(secondaryCA, usage); err != nil {
-		return err
-	}
-
-	return nil
+	return req.ValidateAndAccept(secondaryCA, usage)
 }
 
 // ApproveServerCertificateSigningRequest processes the provided CertificateRequest returning a new CertificateAuthorty
@@ -223,11 +219,7 @@ func (ca CertificateAuthority) ApproveServerCertificateSigningRequest(req *Certi
 	secondaryCA.Certificate = certificate
 	secondaryCA.RootCA = ca.Certificate
 
-	if err := req.ValidateAndAccept(secondaryCA, usage); err != nil {
-		return err
-	}
-
-	return nil
+	return req.ValidateAndAccept(secondaryCA, usage)
 }
 
 // ApproveClientCertificateSigningRequest processes the provided CertificateRequest returning a new CertificateAuthorty
@@ -255,11 +247,7 @@ func (ca CertificateAuthority) ApproveClientCertificateSigningRequest(req *Certi
 	secondaryCA.RootCA = ca.Certificate
 	secondaryCA.Certificate = certificate
 
-	if err := req.ValidateAndAccept(secondaryCA, usage); err != nil {
-		return err
-	}
-
-	return nil
+	return req.ValidateAndAccept(secondaryCA, usage)
 }
 
 func (ca CertificateAuthority) initCertificateRequest(creq *CertificateRequest, serial SerialService, lifeTime time.Duration, usages []x509.ExtKeyUsage) (*x509.Certificate, error) {
@@ -484,11 +472,6 @@ func (ca CertificateAuthority) Persist(store PersistenceStore) error {
 		return err
 	}
 
-	if err := store.Persist(certKeyFileName, keyBytes); err != nil {
-		return err
-	}
-
-	return nil
 }
 
 // TLSCertPool returns a new CertPool which contains the certificate for the CA which can
@@ -559,7 +542,7 @@ type CertificateAuthorityService struct {
 	DNSNames []string
 
 	// DNSNames to be excluded.
-	ExDNSNames []string
+	ExedDNSNames []string
 
 	// DNSNames to be permitted.
 	PermDNSNames []string
@@ -612,7 +595,7 @@ func (cas CertificateAuthorityService) New() (CertificateAuthority, error) {
 	template.EmailAddresses = cas.Emails
 	template.BasicConstraintsValid = true
 	template.NotAfter = before.Add(cas.LifeTime)
-	template.ExcludedDNSDomains = cas.ExDNSNames
+	template.ExcludedDNSDomains = cas.ExedDNSNames
 	template.SignatureAlgorithm = x509.SHA256WithRSA
 	// template.SignatureAlgorithm = cas.SignatureAlgorithm
 	template.KeyUsage = x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign
@@ -733,11 +716,7 @@ func (ca CertificateRequest) Persist(store PersistenceStore) error {
 		return err
 	}
 
-	if err := store.Persist(reqcertKeyFileName, keyBytes); err != nil {
-		return err
-	}
-
-	return nil
+	return store.Persist(reqcertKeyFileName, keyBytes)
 }
 
 // IsValid validates that Certificate is still valid with rootCA with accordance to usage.
@@ -771,6 +750,28 @@ func (ca *CertificateRequest) ValidateAndAccept(sec SecondaryCertificateAuthorit
 
 	ca.SecondaryCA = sec
 	return nil
+}
+
+// TLSClientConfig returns a tls.Config which contains the certificate for the CertificateRequest and
+// has it's tls.Config.ClientCAs pool, the root certificate.
+func (ca *CertificateRequest) TLSClientConfig() (*tls.Config, error) {
+	pool, err := ca.TLSCertPool()
+	if err != nil {
+		return nil, err
+	}
+
+	return ca.TLSConfigWithClientCA(pool)
+}
+
+// TLSRootConfig returns a tls.Config which contains the certificate for the CertificateRequest and
+// has it's tls.Config.RootCAs pool, the root certificate.
+func (ca *CertificateRequest) TLSRootConfig() (*tls.Config, error) {
+	pool, err := ca.TLSCertPool()
+	if err != nil {
+		return nil, err
+	}
+
+	return ca.TLSConfigWithRootCA(pool)
 }
 
 // TLSConfigWithRootCA returns a tls.Config which recieves the tls.Certificate from TLSCert()

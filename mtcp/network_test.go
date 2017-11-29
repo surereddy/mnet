@@ -19,13 +19,13 @@ import (
 	"github.com/influx6/faux/tests"
 	"github.com/influx6/mnet"
 	"github.com/influx6/mnet/certificates"
-	"github.com/influx6/mnet/mocks"
 	"github.com/influx6/mnet/mtcp"
 )
 
 var (
 	events metrics.Metrics
 	space  = regexp.MustCompile("\\s")
+	dialer = &net.Dialer{Timeout: 2 * time.Second}
 )
 
 func initMetrics() {
@@ -44,11 +44,77 @@ func TestNonTLSNetworkWithNetConn(t *testing.T) {
 	}
 	tests.Passed("Should have successfully create network")
 
-	conn, err := net.DialTimeout("tcp", ":4050", 2*time.Second)
+	conn, err := dialer.Dial("tcp", ":4050")
 	if err != nil {
 		tests.FailedWithError(err, "Should have successfully connected to network")
 	}
 	tests.Passed("Should have successfully connected to network")
+
+	payload := []byte("pub help")
+	if err := writeMessage(conn, payload); err != nil {
+		tests.FailedWithError(err, "Should have delivered message to network as client")
+	}
+	tests.Passed("Should have delivered message to network as client")
+
+	expected := []byte("now publishing to [help]\r\n")
+	received, err := readMessage(conn)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully read message from network")
+	}
+	tests.Passed("Should have successfully read message from network")
+
+	if !bytes.Equal(received, expected) {
+		tests.Info("Received: %+q", received)
+		tests.Info("Expected: %+q", expected)
+		tests.FailedWithError(err, "Should have successfully matched expected data with received from network")
+	}
+	tests.Passed("Should have successfully matched expected data with received from network")
+
+	conn.Close()
+	ctx.Cancel()
+
+	netw.Wait()
+}
+func TestTLSNetworkWithNetConn(t *testing.T) {
+	initMetrics()
+
+	_, server, client, err := createTLSCA()
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully created server and client certs")
+	}
+	tests.Passed("Should have successfully created server and client certs")
+
+	serverTls, err := server.TLSRootConfig()
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully create sever's tls config")
+	}
+	tests.Passed("Should have successfully create sever's tls config")
+
+	clientTls, err := client.TLSClientConfig()
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully create sever's tls config")
+	}
+	tests.Passed("Should have successfully create sever's tls config")
+
+	ctx := context.New()
+	netw, err := createNewNetwork(ctx, ":4050", serverTls)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully create network")
+	}
+	tests.Passed("Should have successfully create network")
+
+	conn, err := tls.DialWithDialer(dialer, "tcp", ":4050", clientTls)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully connected to network")
+	}
+	tests.Passed("Should have successfully connected to network")
+
+	if tlsConn, ok := conn.(*tls.Conn); ok {
+		if err := tlsConn.Handshake(); err != nil {
+			tests.FailedWithError(err, "Should have successfully Handshaked tls connection")
+		}
+		tests.Passed("Should have successfully Handshaked tls connection")
+	}
 
 	payload := []byte("pub help")
 	if err := writeMessage(conn, payload); err != nil {
@@ -102,9 +168,6 @@ func writeMessage(w io.Writer, msg []byte) error {
 }
 
 func createTLSCA() (ca certificates.CertificateAuthority, server, client certificates.CertificateRequest, err error) {
-	var store mocks.PersistenceStoreMock
-	store.GetFunc, store.PersistFunc = mocks.MapStore(make(map[string][]byte))
-
 	serials := certificates.SerialService{Length: 128}
 	profile := certificates.CertificateProfile{
 		Local:        "Lagos",
