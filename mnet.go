@@ -29,6 +29,9 @@ type ClientFunc func(Client) error
 // an error.
 type ClientAddrFunc func(Client) (net.Addr, error)
 
+// ClientExpandBufferFunc expands the internal client collecting buffer.
+type ClientExpandBufferFunc func(Client, int) error
+
 // ClientReconnectionFunc defines a function type which receives a Client pointer type and
 // is responsible for the reconnection of the client client connection.
 type ClientReconnectionFunc func(Client, string) error
@@ -44,6 +47,7 @@ var (
 	ErrReadNotAllowed                = errors.New("reading not allowed")
 	ErrWriteNotAllowed               = errors.New("data writing not allowed")
 	ErrCloseNotAllowed               = errors.New("closing not allowed")
+	ErrBufferExpansionNotAllowed     = errors.New("buffer expansion not allowed")
 	ErrFlushNotAllowed               = errors.New("write flushing not allowed")
 	ErrSiblingsNotAllowed            = errors.New("siblings retrieval not allowed")
 	ErrStatisticsNotProvided         = errors.New("statistics not provided")
@@ -77,6 +81,7 @@ type Client struct {
 	CloseFunc        ClientFunc
 	SiblingsFunc     ClientSiblingsFunc
 	StatisticFunc    ClientStatisticsFunc
+	ExpandBufferFunc ClientExpandBufferFunc
 	ReconnectionFunc ClientReconnectionFunc
 }
 
@@ -159,18 +164,37 @@ func (c Client) Reconnect(altAddr string) error {
 	return nil
 }
 
+// ExpandBuffer allows client to expand internal collecting
+// buffer before any writes, else fails to expand buffer once
+// write has being done. It is an expensive operation, has it does
+// a new memory allocation, so be careful how you use it.
+// It allows the internal collecting buffer to be expand to fit
+// new size.
+// WARNING: Remember once expansion is done, it can not be reversed.
+func (c Client) ExpandBuffer(toSize int) error {
+	if c.ExpandBufferFunc == nil {
+		return nil, ErrBufferExpansionNotAllowed
+	}
+
+	return c.ExpandBufferFunc(c, toSize)
+}
+
 // Read reads the underline data into the provided slice.
 func (c Client) Read() ([]byte, error) {
 	if c.ReaderFunc == nil {
 		return nil, ErrReadNotAllowed
 	}
 
-	data, err := c.ReaderFunc(c)
-	if err != nil {
-		return data, err
+	return c.ReaderFunc(c)
+}
+
+// Write writes provided data into connection without any deadline.
+func (c Client) Write(data []byte) (int, error) {
+	if c.WriteFunc == nil {
+		return 0, ErrWriteNotAllowed
 	}
 
-	return data, nil
+	return c.WriteFunc(c, data)
 }
 
 // Flush sends all accumulated message within clients buffer into
@@ -180,11 +204,7 @@ func (c Client) Flush() error {
 		return ErrFlushNotAllowed
 	}
 
-	if err := c.FlushFunc(c); err != nil {
-		return err
-	}
-
-	return nil
+	return c.FlushFunc(c)
 }
 
 // Statistics returns statistics associated with client.j
@@ -200,20 +220,6 @@ func (c Client) Statistics() (Statistics, error) {
 	}
 
 	return c.StatisticFunc(c)
-}
-
-// Write writes provided data into connection without any deadline.
-func (c Client) Write(data []byte) (int, error) {
-	if c.WriteFunc == nil {
-		return 0, ErrWriteNotAllowed
-	}
-
-	count, err := c.WriteFunc(c, data)
-	if err != nil {
-		return count, err
-	}
-
-	return count, nil
 }
 
 // Close closes the underline client connection.

@@ -2,6 +2,7 @@ package mnet
 
 import (
 	"encoding/binary"
+	"errors"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -214,6 +215,7 @@ type SizeAppendBufferredWriter struct {
 	err  error
 	c    int
 	rc   int
+	rcc  int64
 	fl   int64
 	m    int
 }
@@ -226,18 +228,49 @@ type SizeAppendBufferredWriter struct {
 // to be written, this ensures the array is big enough and wont incur
 // multiple expansion when data is being written into buffer.
 func NewSizeAppenBuffereddWriter(w io.Writer, maxBufferSize int) *SizeAppendBufferredWriter {
+	// account for header length size.
+	maxBufferSize += 2
+
 	buff := make([]byte, 2, maxBufferSize)
 	return &SizeAppendBufferredWriter{
 		w:    w,
-		m:    maxBufferSize,
 		data: buff,
 		c:    2,
 		fl:   0,
+		m:    maxBufferSize,
 	}
 }
 
-// Length returns the current total items flushed in buffer.
-func (wb *SizeAppendBufferredWriter) Length() int {
+// ErrItemsInBuffer sets error to be returned if attempts are made to expand buffer
+// while items exist in it.
+var ErrItemsInBuffer = errors.New("buffer has pending content")
+
+// Expand attempts to increase size of buffer, if size val is small, then it is
+// ignored. This allows fine control of total data collect and allows user to
+// ensure all fits within buffer.
+func (wb *SizeAppendBufferredWriter) Expand(toSize int) error {
+	if wb.LengthInBuffer() != 0 {
+		return ErrItemsInBuffer
+	}
+
+	if wb.m >= toSize {
+		return nil
+	}
+
+	toSize += 2
+	newBuff := make([]byte, 2, toSize)
+	wb.m = toSize
+	wb.data = newBuff
+	return nil
+}
+
+// LengthInBuffer returns current length of items in buffer.
+func (wb *SizeAppendBufferredWriter) LengthInBuffer() int {
+	return int(atomic.LoadInt64(&wb.rcc))
+}
+
+// TotalFlushed returns the current total items flushed in buffer.
+func (wb *SizeAppendBufferredWriter) TotalFlushed() int {
 	return int(atomic.LoadInt64(&wb.fl))
 }
 
@@ -268,6 +301,7 @@ func (wb *SizeAppendBufferredWriter) Flush() error {
 			copy(wb.data[2:wb.m], rest)
 			wb.c = len(rest) + 2
 			wb.rc = len(rest)
+			atomic.StoreInt64(&wb.rcc, int64(wb.rc))
 		}
 
 		if err != io.ErrShortWrite {
@@ -279,7 +313,7 @@ func (wb *SizeAppendBufferredWriter) Flush() error {
 
 	wb.c = 2
 	wb.rc = 0
-	atomic.StoreInt64(&wb.fl, 0)
+	atomic.StoreInt64(&wb.rcc, 0)
 	wb.data = wb.data[:2]
 
 	return nil
@@ -305,6 +339,7 @@ func (wb *SizeAppendBufferredWriter) Write(d []byte) (int, error) {
 	copied := copy(wb.data[wb.c:wb.m], d)
 	wb.c += copied
 	wb.rc = wb.c - 2
+	atomic.StoreInt64(&wb.rcc, int64(wb.rc))
 
 	return len(d), nil
 }

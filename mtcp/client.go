@@ -15,8 +15,13 @@ import (
 )
 
 const (
-	defaultDialTimeout = 5 * time.Second
-	defaultKeepAlive   = 3 * time.Minute
+	// DefaultDialTimeout sets the default maximum time in seconds allowed before
+	// a net.Dialer exits attempt to dial a network.
+	DefaultDialTimeout = 1 * time.Second
+
+	// DefaultKeepAlive sets the default maximum time to keep alive a tcp connection
+	// during no-use. It is used by net.Dialer.
+	DefaultKeepAlive = 3 * time.Minute
 )
 
 // ConnectOptions defines a function type used to apply given
@@ -48,9 +53,9 @@ func ClientWriteInterval(dur time.Duration) ConnectOptions {
 	}
 }
 
-// ClientMaxBufferSize sets the clientNetwork to use the provided value
+// ClientMaxNetConnWriteBufferSize sets the clientNetwork to use the provided value
 // as its maximum buffer size for it's writer.
-func ClientMaxBufferSize(buffer int) ConnectOptions {
+func ClientMaxNetConnWriteBufferSize(buffer int) ConnectOptions {
 	return func(cm *clientNetwork) {
 		cm.clientMaxWriteSize = buffer
 	}
@@ -60,7 +65,7 @@ func ClientMaxBufferSize(buffer int) ConnectOptions {
 // as its initial buffer size for it's writer.
 func ClientInitialBuffer(buffer int) ConnectOptions {
 	return func(cm *clientNetwork) {
-		cm.clientInitialWriteSize = buffer
+		cm.clientCollectBufferSize = buffer
 	}
 }
 
@@ -117,29 +122,29 @@ func Connect(addr string, ops ...ConnectOptions) (mnet.Client, error) {
 	}
 
 	if network.dialTimeout <= 0 {
-		network.dialTimeout = defaultDialTimeout
+		network.dialTimeout = DefaultDialTimeout
 	}
 
 	if network.keepAliveTimeout <= 0 {
-		network.keepAliveTimeout = defaultKeepAlive
+		network.keepAliveTimeout = DefaultKeepAlive
 	}
 
-	if network.clientInitialWriteSize <= 0 {
-		network.clientInitialWriteSize = clientMinInitialBuffer
+	if network.clientCollectBufferSize <= 0 {
+		network.clientCollectBufferSize = ClientCollectBufferSize
 	}
 
 	if network.clientMaxWriteDeadline <= 0 {
-		network.clientMaxWriteDeadline = clientWriteDeadline
+		network.clientMaxWriteDeadline = ClientWriteNetConnDeadline
 	}
 
 	if network.clientMaxWriteSize <= 0 {
-		network.clientMaxWriteSize = clientMaxBuffer
+		network.clientMaxWriteSize = ClientMaxNetConnWriteBuffer
 	}
 
 	if network.dialer == nil {
 		network.dialer = &net.Dialer{
-			Timeout: network.dialTimeout,
-			// KeepAlive: network.keepAliveTimeout,
+			Timeout:   network.dialTimeout,
+			KeepAlive: network.keepAliveTimeout,
 		}
 	}
 
@@ -147,7 +152,7 @@ func Connect(addr string, ops ...ConnectOptions) (mnet.Client, error) {
 	network.addr = addr
 	network.parser = mnet.NewSizedMessageParser()
 	network.buffWriter = mnet.NewBufferedIntervalWriter(&network.scratch, network.clientMaxWriteSize, network.clientMaxWriteDeadline)
-	network.bw = mnet.NewSizeAppenBuffereddWriter(network.buffWriter, network.clientInitialWriteSize)
+	network.bw = mnet.NewSizeAppenBuffereddWriter(network.buffWriter, network.clientCollectBufferSize)
 
 	c.Metrics = network.metrics
 	c.FlushFunc = network.flush
@@ -167,32 +172,32 @@ func Connect(addr string, ops ...ConnectOptions) (mnet.Client, error) {
 }
 
 type clientNetwork struct {
-	totalReadIn            int64
-	totalWriteOut          int64
-	totalWriteFlush        int64
-	dialTimeout            time.Duration
-	keepAliveTimeout       time.Duration
-	clientMaxWriteSize     int
-	clientInitialWriteSize int
-	secure                 bool
-	id                     string
-	nid                    string
-	addr                   string
-	localAddr              net.Addr
-	remoteAddr             net.Addr
-	do                     sync.Once
-	tls                    *tls.Config
-	clientMaxWriteDeadline time.Duration
-	worker                 sync.WaitGroup
-	metrics                metrics.Metrics
-	scratch                bytes.Buffer
-	dialer                 *net.Dialer
-	parser                 *mnet.SizedMessageParser
-	buffWriter             *mnet.BufferedIntervalWriter
-	bw                     *mnet.SizeAppendBufferredWriter
-	cu                     sync.RWMutex
-	conn                   net.Conn
-	clientErr              error
+	totalReadIn             int64
+	totalWriteOut           int64
+	totalWriteFlush         int64
+	dialTimeout             time.Duration
+	keepAliveTimeout        time.Duration
+	clientMaxWriteSize      int
+	clientCollectBufferSize int
+	secure                  bool
+	id                      string
+	nid                     string
+	addr                    string
+	localAddr               net.Addr
+	remoteAddr              net.Addr
+	do                      sync.Once
+	tls                     *tls.Config
+	clientMaxWriteDeadline  time.Duration
+	worker                  sync.WaitGroup
+	metrics                 metrics.Metrics
+	scratch                 bytes.Buffer
+	dialer                  *net.Dialer
+	parser                  *mnet.SizedMessageParser
+	buffWriter              *mnet.BufferedIntervalWriter
+	bw                      *mnet.SizeAppendBufferredWriter
+	cu                      sync.RWMutex
+	conn                    net.Conn
+	clientErr               error
 }
 
 func (cn *clientNetwork) getStatistics(cm mnet.Client) (mnet.Statistics, error) {
@@ -292,7 +297,7 @@ func (cn *clientNetwork) readLoop(cm mnet.Client, conn net.Conn) {
 	// defer cn.close(cm)
 	defer cn.worker.Done()
 
-	incoming := make([]byte, minBufferSize, maxBufferSize)
+	incoming := make([]byte, MinBufferSize, MaxBufferSize)
 
 	for {
 		n, err := conn.Read(incoming)
@@ -317,16 +322,16 @@ func (cn *clientNetwork) readLoop(cm mnet.Client, conn net.Conn) {
 		atomic.AddInt64(&cn.totalReadIn, int64(n))
 
 		// Lets shrink buffer abit within area.
-		if n == len(incoming) && n < maxBufferSize {
-			incoming = incoming[0 : minBufferSize*2]
+		if n == len(incoming) && n < MaxBufferSize {
+			incoming = incoming[0 : MinBufferSize*2]
 		}
 
-		if n < len(incoming)/2 && len(incoming) > minBufferSize {
+		if n < len(incoming)/2 && len(incoming) > MinBufferSize {
 			incoming = incoming[0 : len(incoming)/2]
 		}
 
-		if n > len(incoming) && len(incoming) > minBufferSize && n < maxBufferSize {
-			incoming = incoming[0 : maxBufferSize/2]
+		if n > len(incoming) && len(incoming) > MinBufferSize && n < MaxBufferSize {
+			incoming = incoming[0 : MaxBufferSize/2]
 		}
 	}
 }
@@ -416,7 +421,7 @@ func (cn *clientNetwork) reconnect(cm mnet.Client, altAddr string) error {
 
 // getConn returns net.Conn for giving addr.
 func (cn *clientNetwork) getConn(cm mnet.Client, addr string) (net.Conn, error) {
-	lastSleep := minSleep
+	lastSleep := MinTemporarySleep
 
 	var err error
 	var conn net.Conn
@@ -432,7 +437,7 @@ func (cn *clientNetwork) getConn(cm mnet.Client, addr string) (net.Conn, error) 
 				metrics.Message("Connection: failed to connect"),
 			)
 			if netErr, ok := err.(net.Error); ok && netErr.Temporary() {
-				if lastSleep >= maxSleep {
+				if lastSleep >= MaxTemporarySleep {
 					return nil, err
 				}
 

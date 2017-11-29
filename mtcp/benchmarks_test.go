@@ -15,13 +15,13 @@ func BenchmarkNonTLSNetworkWriteWithClient(b *testing.B) {
 	ctx := context.New()
 	netw, err := createNewNetwork(ctx, ":5050", nil)
 	if err != nil {
-		b.Fatalf("Failed to create network: ", err)
+		b.Fatalf("Failed to create network: %+q", err)
 		return
 	}
 
 	client, err := mtcp.Connect(":5050", mtcp.Metrics(events), mtcp.ClientWriteInterval(1*time.Second))
 	if err != nil {
-		b.Fatalf("Failed to dial network: ", err)
+		b.Fatalf("Failed to dial network %+q", err)
 		return
 	}
 
@@ -47,13 +47,13 @@ func BenchmarkNonTLSNetworkWriteWithNetConn(b *testing.B) {
 	ctx := context.New()
 	netw, err := createNewNetwork(ctx, ":5050", nil)
 	if err != nil {
-		b.Fatalf("Failed to create network: ", err)
+		b.Fatalf("Failed to create network: %+q", err)
 		return
 	}
 
 	conn, err := net.DialTimeout("tcp", ":5050", 2*time.Second)
 	if err != nil {
-		b.Fatalf("Failed to dial network: ", err)
+		b.Fatalf("Failed to dial network: %+q", err)
 		return
 	}
 

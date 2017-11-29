@@ -16,14 +16,39 @@ import (
 )
 
 const (
-	minSleep               = 10 * time.Millisecond
-	maxSleep               = 2 * time.Second
-	oneMB                  = 1024 * 1024
-	minBufferSize          = 512
-	maxBufferSize          = 1024 * minBufferSize
-	clientMinInitialBuffer = 1024 * minBufferSize
-	clientMaxBuffer        = 1024 * 1024
-	clientWriteDeadline    = 600 * time.Millisecond
+	// MinTemporarySleep sets the minimum, initial sleep a network should
+	// take when facing a Temporary net error.
+	MinTemporarySleep = 10 * time.Millisecond
+
+	// MaxTemporarySleep sets the maximum, allowed sleep a network should
+	// take when facing a Temporary net error.
+	MaxTemporarySleep = 1 * time.Second
+
+	// MinBufferSize sets the initial size of space of the slice
+	// used to read in content from a net.Conn in the connections
+	// read loop.
+	MinBufferSize = 512
+
+	// MaxBufferSize sets the maximum size allowed for all reads
+	// used in the readloop of a client's net.Conn.
+	MaxBufferSize = 1024 * MinBufferSize
+
+	// ClientCollectBufferSize sets the collecting buffer size of a Clients.Write
+	// which will be helded till Flushed, unless the size of data had exceeded
+	// this size, then rest data gets flushed. Always ensure data written is
+	// within this given size or split properly.
+	ClientCollectBufferSize = 1024 * MinBufferSize
+
+	// ClientMaxNetConnWriteBuffer sets the maximum allowed buffer size for the interval
+	// writer which limits total call to net.Conn.Write. The buffer collects
+	// data till the ClientMaxNetConnWriteBuffer and writes such to the net.Conn.
+	ClientMaxNetConnWriteBuffer = 1024 * 1024
+
+	// ClientWriteNetConnDeadline sets the maximum time to await a call to Client.Flush
+	// which will reset the writer to collect more data before writing. This helps
+	// to both buffer writting data and minimize calls to net.Conn.Write and improve
+	// performance.
+	ClientWriteNetConnDeadline = 600 * time.Millisecond
 )
 
 type message struct {
@@ -182,7 +207,7 @@ func (nc *networkConn) readLoop() {
 	cn := nc.conn
 	nc.mu.RUnlock()
 
-	incoming := make([]byte, minBufferSize, maxBufferSize)
+	incoming := make([]byte, MinBufferSize, MaxBufferSize)
 
 	for {
 		n, err := cn.Read(incoming)
@@ -208,16 +233,16 @@ func (nc *networkConn) readLoop() {
 		atomic.AddInt64(&nc.network.totalClientsReadIn, int64(n))
 
 		// Lets shrink buffer abit within area.
-		if n == len(incoming) && n < maxBufferSize {
-			incoming = incoming[0 : minBufferSize*2]
+		if n == len(incoming) && n < MaxBufferSize {
+			incoming = incoming[0 : MinBufferSize*2]
 		}
 
-		if n < len(incoming)/2 && len(incoming) > minBufferSize {
+		if n < len(incoming)/2 && len(incoming) > MinBufferSize {
 			incoming = incoming[0 : len(incoming)/2]
 		}
 
-		if n > len(incoming) && len(incoming) > minBufferSize && n < maxBufferSize {
-			incoming = incoming[0 : maxBufferSize/2]
+		if n > len(incoming) && len(incoming) > MinBufferSize && n < MaxBufferSize {
+			incoming = incoming[0 : MaxBufferSize/2]
 		}
 	}
 }
@@ -285,15 +310,15 @@ func (n *Network) Start(ctx context.CancelContext) error {
 	n.clients = make(map[string]*networkConn)
 
 	if n.ClientInitialWriteSize <= 0 {
-		n.ClientInitialWriteSize = clientMinInitialBuffer
+		n.ClientInitialWriteSize = ClientCollectBufferSize
 	}
 
 	if n.ClientMaxWriteDeadline <= 0 {
-		n.ClientMaxWriteDeadline = clientWriteDeadline
+		n.ClientMaxWriteDeadline = ClientWriteNetConnDeadline
 	}
 
 	if n.ClientMaxWriteSize <= 0 {
-		n.ClientMaxWriteSize = clientMaxBuffer
+		n.ClientMaxWriteSize = ClientMaxNetConnWriteBuffer
 	}
 
 	n.routines.Add(2)
@@ -365,7 +390,7 @@ func (n *Network) runStream(stream melon.ConnReadWriteCloser) {
 		metrics.WithID(n.ID),
 	)
 
-	initial := minSleep
+	initial := MinTemporarySleep
 
 	for {
 		newConn, err := stream.ReadConn()
@@ -384,8 +409,8 @@ func (n *Network) runStream(stream melon.ConnReadWriteCloser) {
 				time.Sleep(initial)
 				initial *= 2
 
-				if initial >= maxSleep {
-					initial = minSleep
+				if initial >= MaxTemporarySleep {
+					initial = MinTemporarySleep
 				}
 			}
 
