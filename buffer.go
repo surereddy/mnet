@@ -311,7 +311,7 @@ func (wb *SizeAppendBufferredWriter) Write(d []byte) (int, error) {
 	}
 
 	// if we have filled up possible size area, then flush first.
-	if len(d)+wb.c >= wb.m {
+	if len(d)+wb.c > wb.m {
 		if err := wb.Flush(); err != nil {
 			return 0, err
 		}

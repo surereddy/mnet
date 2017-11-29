@@ -13,6 +13,12 @@ var (
 	ErrParseErr  = errors.New("Failed to parse data")
 )
 
+var messagePool = sync.Pool{
+	New: func() interface{} {
+		return new(Message)
+	},
+}
+
 // Message defines a single node upon a linked list which
 // contains it's data and a link to the next message node.
 type Message struct {
@@ -71,7 +77,9 @@ func (smp *SizedMessageParser) Parse(d []byte) error {
 		}
 
 		next := smp.scratch.Next(nextSize)
-		smp.addMessage(&Message{Data: next})
+		msg := messagePool.New().(*Message)
+		msg.Data = next
+		smp.addMessage(msg)
 	}
 
 	return nil
@@ -96,7 +104,11 @@ func (smp *SizedMessageParser) Next() ([]byte, error) {
 		smp.head = next
 	}
 
-	return head.Data, nil
+	data := head.Data
+	head.Data = nil
+	messagePool.Put(head)
+
+	return data, nil
 }
 
 func (smp *SizedMessageParser) addMessage(m *Message) {
