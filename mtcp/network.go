@@ -177,7 +177,7 @@ func (nc *networkConn) flush(cm mnet.Client) error {
 		return mnet.ErrAlreadyClosed
 	}
 
-	atomic.StoreInt64(&nc.totalFlushOut, int64(nc.bw.Length()))
+	atomic.StoreInt64(&nc.totalFlushOut, int64(nc.bw.TotalFlushed()))
 	return nc.bw.Flush()
 }
 

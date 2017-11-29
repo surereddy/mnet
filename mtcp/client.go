@@ -222,7 +222,7 @@ func (cn *clientNetwork) getLocalAddr(cm mnet.Client) (net.Addr, error) {
 
 func (cn *clientNetwork) flush(cm mnet.Client) error {
 	err := cn.bw.Flush()
-	atomic.StoreInt64(&cn.totalWriteFlush, int64(cn.bw.Length()))
+	atomic.StoreInt64(&cn.totalWriteFlush, int64(cn.bw.TotalFlushed()))
 	if err != nil && err != io.ErrShortWrite {
 		cn.metrics.Emit(
 			metrics.Error(err),
