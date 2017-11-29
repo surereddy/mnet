@@ -14,13 +14,13 @@ func TestNonTLSNetworkWithClient(t *testing.T) {
 	initMetrics()
 
 	ctx := context.New()
-	netw, err := createNewNetwork(ctx, ":4050", nil)
+	netw, err := createNewNetwork(ctx, "localhost:4050", nil)
 	if err != nil {
 		tests.FailedWithError(err, "Should have successfully create network")
 	}
 	tests.Passed("Should have successfully create network")
 
-	client, err := mtcp.Connect(":4050", mtcp.Metrics(events))
+	client, err := mtcp.Connect("localhost:4050", mtcp.Metrics(events))
 	if err != nil {
 		tests.FailedWithError(err, "Should have successfully connected to network")
 	}
@@ -79,7 +79,7 @@ func TestTLSNetworkWithClient(t *testing.T) {
 	}
 	tests.Passed("Should have successfully created server and client certs")
 
-	serverTls, err := serverca.TLSRootConfig()
+	serverTls, err := serverca.TLSServerConfig(true)
 	if err != nil {
 		tests.FailedWithError(err, "Should have successfully create sever's tls config")
 	}
@@ -92,13 +92,13 @@ func TestTLSNetworkWithClient(t *testing.T) {
 	tests.Passed("Should have successfully create sever's tls config")
 
 	ctx := context.New()
-	netw, err := createNewNetwork(ctx, ":4050", serverTls)
+	netw, err := createNewNetwork(ctx, "localhost:4050", serverTls)
 	if err != nil {
 		tests.FailedWithError(err, "Should have successfully create network")
 	}
 	tests.Passed("Should have successfully create network")
 
-	client, err := mtcp.Connect(":4050", mtcp.Metrics(events), mtcp.TLSConfig(clientTls))
+	client, err := mtcp.Connect("localhost:4050", mtcp.Metrics(events), mtcp.TLSConfig(clientTls))
 	if err != nil {
 		tests.FailedWithError(err, "Should have successfully connected to network")
 	}

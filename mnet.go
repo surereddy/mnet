@@ -42,6 +42,7 @@ type ClientStatisticsFunc func(Client) (Statistics, error)
 
 // errors ...
 var (
+	ErrNoHostNameInAddr              = errors.New("addr must have hostname")
 	ErrStillConnected                = errors.New("connection still active")
 	ErrAlreadyClosed                 = errors.New("already closed connection")
 	ErrReadNotAllowed                = errors.New("reading not allowed")

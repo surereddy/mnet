@@ -754,25 +754,27 @@ func (ca *CertificateRequest) ValidateAndAccept(sec SecondaryCertificateAuthorit
 }
 
 // TLSClientConfig returns a tls.Config which contains the certificate for the CertificateRequest and
-// has it's tls.Config.ClientCAs pool, the root certificate.
+// has it's tls.Config.ClientCAs pool set to the root certificate.
+// WARNING: Use this for client connections wishing to use tls certificates. Its a helper method.
 func (ca *CertificateRequest) TLSClientConfig() (*tls.Config, error) {
 	pool, err := ca.TLSCertPool()
 	if err != nil {
 		return nil, err
 	}
 
-	return ca.TLSConfigWithClientCA(pool)
+	return ca.TLSConfigWithRootCA(pool, false)
 }
 
-// TLSRootConfig returns a tls.Config which contains the certificate for the CertificateRequest and
-// has it's tls.Config.RootCAs pool, the root certificate.
-func (ca *CertificateRequest) TLSRootConfig() (*tls.Config, error) {
+// TLSServerConfig returns a tls.Config which contains the certificate for the CertificateRequest and
+// has it's tls.Config.ClientCAs pool set to the root certificate.
+// WARNING: Use this for server connections wishing to use tls certificates. Its a helper method.
+func (ca *CertificateRequest) TLSServerConfig(verifyClient bool) (*tls.Config, error) {
 	pool, err := ca.TLSCertPool()
 	if err != nil {
 		return nil, err
 	}
 
-	return ca.TLSConfigWithRootCA(pool)
+	return ca.TLSConfigWithClientCA(pool, verifyClient)
 }
 
 // TLSConfigWithRootCA returns a tls.Config which recieves the tls.Certificate from TLSCert()
@@ -780,7 +782,8 @@ func (ca *CertificateRequest) TLSRootConfig() (*tls.Config, error) {
 // RootCAs for the tlsConfig returned.
 // Use this to generate tls.Config for the server receiving client connection to ensure client
 // certificate are confirmed.
-func (ca *CertificateRequest) TLSConfigWithRootCA(rootCAPool *x509.CertPool) (*tls.Config, error) {
+// Warning: This sets the tls.Config.RootCA.
+func (ca *CertificateRequest) TLSConfigWithRootCA(rootCAPool *x509.CertPool, verifyClient bool) (*tls.Config, error) {
 	tlsCert, err := ca.TLSCert()
 	if err != nil {
 		return nil, err
@@ -790,7 +793,7 @@ func (ca *CertificateRequest) TLSConfigWithRootCA(rootCAPool *x509.CertPool) (*t
 	tlsConfig.Certificates = append(tlsConfig.Certificates, tlsCert)
 	tlsConfig.RootCAs = rootCAPool
 
-	if rootCAPool != nil {
+	if verifyClient {
 		tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
 	}
 
@@ -802,7 +805,8 @@ func (ca *CertificateRequest) TLSConfigWithRootCA(rootCAPool *x509.CertPool) (*t
 // ClientCA for the tlsConfig returned.
 // Use this to generate tls.Config for the client connecting to a tls Server that requires client
 // certification.
-func (ca *CertificateRequest) TLSConfigWithClientCA(clientCAPool *x509.CertPool) (*tls.Config, error) {
+// Warning: This sets the tls.Config.ClientCA.
+func (ca *CertificateRequest) TLSConfigWithClientCA(clientCAPool *x509.CertPool, verifyClient bool) (*tls.Config, error) {
 	tlsCert, err := ca.TLSCert()
 	if err != nil {
 		return nil, err
@@ -812,7 +816,7 @@ func (ca *CertificateRequest) TLSConfigWithClientCA(clientCAPool *x509.CertPool)
 	tlsConfig.Certificates = append(tlsConfig.Certificates, tlsCert)
 	tlsConfig.ClientCAs = clientCAPool
 
-	if clientCAPool != nil {
+	if verifyClient {
 		tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
 	}
 

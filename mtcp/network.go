@@ -9,6 +9,7 @@ import (
 
 	"github.com/influx6/faux/context"
 	"github.com/influx6/faux/metrics"
+	"github.com/influx6/faux/netutils"
 	"github.com/influx6/melon"
 	"github.com/influx6/mnet"
 	"github.com/influx6/mnet/mlisten"
@@ -299,6 +300,12 @@ func (n *Network) Start(ctx context.CancelContext) error {
 		metrics.With("network", n.ID),
 		metrics.WithID(n.ID),
 	)
+
+	n.Addr = netutils.GetAddr(n.Addr)
+	host, _, _ := net.SplitHostPort(n.Addr)
+	if n.TLS != nil && !n.TLS.InsecureSkipVerify {
+		n.TLS.ServerName = host
+	}
 
 	stream, err := mlisten.Listen("tcp", n.Addr, n.TLS)
 	if err != nil {

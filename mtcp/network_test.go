@@ -36,13 +36,13 @@ func TestNonTLSNetworkWithNetConn(t *testing.T) {
 	initMetrics()
 
 	ctx := context.New()
-	netw, err := createNewNetwork(ctx, ":4050", nil)
+	netw, err := createNewNetwork(ctx, "localhost:4050", nil)
 	if err != nil {
 		tests.FailedWithError(err, "Should have successfully create network")
 	}
 	tests.Passed("Should have successfully create network")
 
-	conn, err := dialer.Dial("tcp", ":4050")
+	conn, err := dialer.Dial("tcp", "localhost:4050")
 	if err != nil {
 		tests.FailedWithError(err, "Should have successfully connected to network")
 	}
@@ -82,7 +82,7 @@ func TestTLSNetworkWithNetConn(t *testing.T) {
 	}
 	tests.Passed("Should have successfully created server and client certs")
 
-	serverTls, err := server.TLSRootConfig()
+	serverTls, err := server.TLSServerConfig(true)
 	if err != nil {
 		tests.FailedWithError(err, "Should have successfully create sever's tls config")
 	}
@@ -94,14 +94,16 @@ func TestTLSNetworkWithNetConn(t *testing.T) {
 	}
 	tests.Passed("Should have successfully create sever's tls config")
 
+	clientTls.ServerName = "localhost"
+
 	ctx := context.New()
-	netw, err := createNewNetwork(ctx, ":4050", serverTls)
+	netw, err := createNewNetwork(ctx, "localhost:4050", serverTls)
 	if err != nil {
 		tests.FailedWithError(err, "Should have successfully create network")
 	}
 	tests.Passed("Should have successfully create network")
 
-	conn, err := tls.DialWithDialer(dialer, "tcp", ":4050", clientTls)
+	conn, err := tls.DialWithDialer(dialer, "tcp", "localhost:4050", clientTls)
 	if err != nil {
 		tests.FailedWithError(err, "Should have successfully connected to network")
 	}
@@ -166,9 +168,9 @@ func writeMessage(w io.Writer, msg []byte) error {
 func createTLSCA() (ca certificates.CertificateAuthority, server, client certificates.CertificateRequest, err error) {
 	serials := certificates.SerialService{Length: 128}
 	profile := certificates.CertificateProfile{
+		CommonName:   "*",
 		Local:        "Lagos",
 		Organization: "DreamBench",
-		CommonName:   "DreamBench Inc",
 		Country:      "Nigeria",
 		Province:     "South-West",
 	}

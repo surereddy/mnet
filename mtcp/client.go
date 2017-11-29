@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/influx6/faux/metrics"
+	"github.com/influx6/faux/netutils"
 	"github.com/influx6/mnet"
 	uuid "github.com/satori/go.uuid"
 )
@@ -110,12 +111,19 @@ func Connect(addr string, ops ...ConnectOptions) (mnet.Client, error) {
 	var c mnet.Client
 	c.ID = uuid.NewV4().String()
 
+	addr = netutils.GetAddr(addr)
+	host, _, _ := net.SplitHostPort(addr)
+
 	network := new(clientNetwork)
 	for _, op := range ops {
 		op(network)
 	}
 
 	c.NID = network.nid
+
+	if network.tls != nil && !network.tls.InsecureSkipVerify {
+		network.tls.ServerName = host
+	}
 
 	if network.metrics == nil {
 		network.metrics = metrics.New()

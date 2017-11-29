@@ -112,7 +112,7 @@ func TestCertificateRequestServiceForClient(t *testing.T) {
 	}
 	tests.Passed("Should have successfully created client tls.Config")
 
-	if _, err = reqCA.TLSRootConfig(); err != nil {
+	if _, err = reqCA.TLSServerConfig(false); err != nil {
 		tests.FailedWithError(err, "Should have successfully created root tls.Config")
 	}
 	tests.Passed("Should have successfully created root tls.Config")
@@ -171,7 +171,7 @@ func TestCertificateRequestServiceForServer(t *testing.T) {
 	}
 	tests.Passed("Should have successfully created client tls.Config")
 
-	if _, err = reqCA.TLSRootConfig(); err != nil {
+	if _, err = reqCA.TLSServerConfig(false); err != nil {
 		tests.FailedWithError(err, "Should have successfully created root tls.Config")
 	}
 	tests.Passed("Should have successfully created root tls.Config")
@@ -230,7 +230,7 @@ func TestCertificateRequestRawLoading(t *testing.T) {
 	}
 	tests.Passed("Should have successfully created client tls.Config")
 
-	if _, err = reqCA.TLSRootConfig(); err != nil {
+	if _, err = reqCA.TLSServerConfig(false); err != nil {
 		tests.FailedWithError(err, "Should have successfully created root tls.Config")
 	}
 	tests.Passed("Should have successfully created root tls.Config")
