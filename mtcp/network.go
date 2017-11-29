@@ -348,9 +348,14 @@ func (n *Network) endLogic(ctx context.CancelContext, stream melon.ConnReadWrite
 	defer n.routines.Done()
 
 	<-ctx.Done()
+
+	n.cu.RLock()
 	for _, conn := range n.clients {
+		n.cu.RUnlock()
 		conn.closeConnection()
+		n.cu.RLock()
 	}
+	n.cu.RUnlock()
 
 	if err := stream.Close(); err != nil {
 		n.Metrics.Emit(
