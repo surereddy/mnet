@@ -173,7 +173,7 @@ func (c Client) Reconnect(altAddr string) error {
 // WARNING: Remember once expansion is done, it can not be reversed.
 func (c Client) ExpandBuffer(toSize int) error {
 	if c.ExpandBufferFunc == nil {
-		return nil, ErrBufferExpansionNotAllowed
+		return ErrBufferExpansionNotAllowed
 	}
 
 	return c.ExpandBufferFunc(c, toSize)
