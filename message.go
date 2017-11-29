@@ -88,9 +88,9 @@ func (smp *SizedMessageParser) Parse(d []byte) error {
 // Next returns the next message saved on the parsers linked list.
 func (smp *SizedMessageParser) Next() ([]byte, error) {
 	smp.mu.RLock()
-	defer smp.mu.RUnlock()
 
 	if smp.tail == nil && smp.head == nil {
+		smp.mu.RUnlock()
 		return nil, ErrNoDataYet
 	}
 
@@ -106,6 +106,8 @@ func (smp *SizedMessageParser) Next() ([]byte, error) {
 
 	data := head.Data
 	head.Data = nil
+	smp.mu.RUnlock()
+
 	messagePool.Put(head)
 
 	return data, nil
@@ -113,15 +115,16 @@ func (smp *SizedMessageParser) Next() ([]byte, error) {
 
 func (smp *SizedMessageParser) addMessage(m *Message) {
 	smp.mu.Lock()
-	defer smp.mu.Unlock()
 
 	atomic.AddInt64(&smp.processedMessages, 1)
 	if smp.head == nil && smp.tail == nil {
 		smp.head = m
 		smp.tail = m
+		smp.mu.Unlock()
 		return
 	}
 
 	smp.tail.Next = m
 	smp.tail = m
+	smp.mu.Unlock()
 }
