@@ -130,25 +130,11 @@ func (bu *BufferedIntervalWriter) Write(d []byte) (int, error) {
 	nextSize := bu.c + dLen
 
 	if nextSize > bu.size {
-		if bu.w == nil {
-			return 0, ErrWriteNotAllowed
-		}
-
-		n, err := bu.w.Write(d)
-		atomic.StoreInt64(&bu.lastWrittenDirectlyToW, int64(n))
-		atomic.AddInt64(&bu.totalWrittenDirectlyToW, int64(n))
-		if n < dLen && err == nil {
-			err = io.ErrShortWrite
-		}
-
-		if err != nil {
-			if err != io.ErrShortWrite {
-				bu.err = err
-			}
-		}
-
 		bu.mu.Unlock()
-		return n, err
+		if err := bu.Flush(); err != nil {
+			return 0, err
+		}
+		bu.mu.Lock()
 	}
 
 	bu.timer.Reset(bu.dur)
@@ -180,7 +166,7 @@ func (bu *BufferedIntervalWriter) Flush() error {
 
 	if bu.w == nil {
 		bu.mu.Unlock()
-		return nil
+		return ErrWriteNotAllowed
 	}
 
 	bu.timer.Reset(bu.dur)

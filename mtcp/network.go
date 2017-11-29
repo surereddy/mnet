@@ -52,7 +52,7 @@ const (
 	// which will reset the writer to collect more data before writing. This helps
 	// to both buffer writting data and minimize calls to net.Conn.Write and improve
 	// performance.
-	ClientWriteNetConnDeadline = 100 * time.Millisecond
+	ClientWriteNetConnDeadline = 60 * time.Millisecond
 )
 
 type message struct {
