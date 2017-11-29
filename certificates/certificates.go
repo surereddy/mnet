@@ -472,6 +472,7 @@ func (ca CertificateAuthority) Persist(store PersistenceStore) error {
 		return err
 	}
 
+	return store.Persist(certKeyFileName, keyBytes)
 }
 
 // TLSCertPool returns a new CertPool which contains the certificate for the CA which can
