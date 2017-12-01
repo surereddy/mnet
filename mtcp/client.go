@@ -62,11 +62,11 @@ func ClientMaxNetConnWriteBufferSize(buffer int) ConnectOptions {
 	}
 }
 
-// ClientInitialBuffer sets the clientNetwork to use the provided value
+// ClientMaxCollectionBuffer sets the clientNetwork to use the provided value
 // as its initial buffer size for it's writer.
-func ClientInitialBuffer(buffer int) ConnectOptions {
+func ClientMaxCollectionBuffer(buffer int) ConnectOptions {
 	return func(cm *clientNetwork) {
-		cm.clientCollectBufferSize = buffer
+		cm.ClientMaxCollectBufferSize = buffer
 	}
 }
 
@@ -138,8 +138,8 @@ func Connect(addr string, ops ...ConnectOptions) (mnet.Client, error) {
 		network.keepAliveTimeout = DefaultKeepAlive
 	}
 
-	if network.clientCollectBufferSize <= 0 {
-		network.clientCollectBufferSize = ClientCollectBufferSize
+	if network.ClientMaxCollectBufferSize <= 0 {
+		network.ClientMaxCollectBufferSize = ClientMaxCollectBufferSize
 	}
 
 	if network.clientMaxWriteDeadline <= 0 {
@@ -161,7 +161,7 @@ func Connect(addr string, ops ...ConnectOptions) (mnet.Client, error) {
 	network.addr = addr
 	network.parser = mnet.NewSizedMessageParser()
 	network.buffWriter = mnet.NewBufferedIntervalWriter(&network.scratch, network.clientMaxWriteSize, network.clientMaxWriteDeadline)
-	network.bw = mnet.NewSizeAppenBuffereddWriter(network.buffWriter, network.clientCollectBufferSize)
+	network.bw = mnet.NewSizeAppenBuffereddWriter(network.buffWriter, network.ClientMaxCollectBufferSize)
 
 	c.Metrics = network.metrics
 	c.FlushFunc = network.flush
@@ -181,36 +181,36 @@ func Connect(addr string, ops ...ConnectOptions) (mnet.Client, error) {
 }
 
 type clientNetwork struct {
-	totalReadIn             int64
-	totalWriteOut           int64
-	totalWriteFlush         int64
-	totalInBuff             int64
-	totalreconnects         int64
-	totalbadreconnects      int64
-	totalInCBuff            int64
-	dialTimeout             time.Duration
-	keepAliveTimeout        time.Duration
-	clientMaxWriteSize      int
-	clientCollectBufferSize int
-	secure                  bool
-	id                      string
-	nid                     string
-	addr                    string
-	localAddr               net.Addr
-	remoteAddr              net.Addr
-	do                      sync.Once
-	tls                     *tls.Config
-	clientMaxWriteDeadline  time.Duration
-	worker                  sync.WaitGroup
-	metrics                 metrics.Metrics
-	scratch                 bytes.Buffer
-	dialer                  *net.Dialer
-	parser                  *mnet.SizedMessageParser
-	buffWriter              *mnet.BufferedIntervalWriter
-	bw                      *mnet.SizeAppendBufferredWriter
-	cu                      sync.RWMutex
-	conn                    net.Conn
-	clientErr               error
+	totalReadIn                int64
+	totalWriteOut              int64
+	totalWriteFlush            int64
+	totalInBuff                int64
+	totalreconnects            int64
+	totalbadreconnects         int64
+	totalInCBuff               int64
+	dialTimeout                time.Duration
+	keepAliveTimeout           time.Duration
+	clientMaxWriteSize         int
+	ClientMaxCollectBufferSize int
+	secure                     bool
+	id                         string
+	nid                        string
+	addr                       string
+	localAddr                  net.Addr
+	remoteAddr                 net.Addr
+	do                         sync.Once
+	tls                        *tls.Config
+	clientMaxWriteDeadline     time.Duration
+	worker                     sync.WaitGroup
+	metrics                    metrics.Metrics
+	scratch                    bytes.Buffer
+	dialer                     *net.Dialer
+	parser                     *mnet.SizedMessageParser
+	buffWriter                 *mnet.BufferedIntervalWriter
+	bw                         *mnet.SizeAppendBufferredWriter
+	cu                         sync.RWMutex
+	conn                       net.Conn
+	clientErr                  error
 }
 
 func (cn *clientNetwork) getStatistics(cm mnet.Client) (mnet.Statistics, error) {

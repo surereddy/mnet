@@ -35,13 +35,19 @@ const (
 
 	// MaxBufferSize sets the maximum size allowed for all reads
 	// used in the readloop of a client's net.Conn.
-	MaxBufferSize = 9560
+	MaxBufferSize = 69560
 
-	// ClientCollectBufferSize sets the collecting buffer size of a Clients.Write
+	// ServerClientMaxCollectBufferSize sets the collecting buffer size of a Clients.Write
 	// which will be helded till Flushed, unless the size of data had exceeded
 	// this size, then rest data gets flushed. Always ensure data written is
 	// within this given size or split properly.
-	ClientCollectBufferSize = 25720
+	ServerClientMaxCollectBufferSize = 39720
+
+	// ClientMaxCollectBufferSize sets the collecting buffer size of a Clients.Write
+	// which will be helded till Flushed, unless the size of data had exceeded
+	// this size, then rest data gets flushed. Always ensure data written is
+	// within this given size or split properly.
+	ClientMaxCollectBufferSize = 2720
 
 	// ClientMaxNetConnWriteBuffer sets the maximum allowed buffer size for the interval
 	// writer which limits total call to net.Conn.Write. The buffer collects
@@ -326,7 +332,7 @@ func (n *Network) Start(ctx context.CancelContext) error {
 	n.clients = make(map[string]*networkConn)
 
 	if n.ClientInitialWriteSize <= 0 {
-		n.ClientInitialWriteSize = ClientCollectBufferSize
+		n.ClientInitialWriteSize = ServerClientMaxCollectBufferSize
 	}
 
 	if n.ClientMaxWriteDeadline <= 0 {
