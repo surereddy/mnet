@@ -20,19 +20,22 @@ with data buffering techniques, it ensures you transfer massive data within grea
 Below is a benchmark of `mtcp` running with golang version `1.9.2` on OS X 10.12.6.
 
 ```bash
-BenchmarkNonTLSNetworkWriteWithClient-4    	30000000	        59.6 ns/op	 134.24 MB/s	
-BenchmarkNonTLSNetworkWriteWithNetConn-4   	  200000	      8926 ns/op	   0.90 MB/s	 
-BenchmarkNoBytesMessages-4                 	30000000	        50.2 ns/op	  79.67 MB/s	
-Benchmark2BytesMessages-4                  	30000000	        54.4 ns/op	 110.38 MB/s	
-Benchmark8BytesMessages-4                  	20000000	        61.1 ns/op	 196.44 MB/s	
-Benchmark16BytesMessages-4                 	20000000	        68.7 ns/op	 290.99 MB/s	
-Benchmark32BytesMessages-4                 	20000000	        88.8 ns/op	 405.52 MB/s	
-Benchmark64BytesMessages-4                 	20000000	        99.7 ns/op	 682.32 MB/s	
-Benchmark128BytesMessages-4                	10000000	       189 ns/op	 698.30 MB/s	
-Benchmark256BytesMessages-4                	 5000000	       362 ns/op	 717.96 MB/s	
-Benchmark1KMessages-4                      	 1000000	      1426 ns/op	 720.77 MB/s	
-Benchmark4KMessages-4                      	  300000	      5663 ns/op	 723.95 MB/s	
-Benchmark8KMessages-4                      	  200000	     11352 ns/op	 721.96 MB/s	1 B/op
+BenchmarkNonTLSNetworkWriteWithClient-4    	20000000	        55.5 ns/op	 144.01 MB/s	       
+BenchmarkNonTLSNetworkWriteWithNetConn-4   	  200000	      9195 ns/op	   0.87 MB/s	      72 B/op	       2 allocs/op
+```
+
+```bash
+BenchmarkNoBytesMessages-4                 	30000000	        52.5 ns/op	  76.15 MB/s	       
+Benchmark2BytesMessages-4                  	30000000	        59.2 ns/op	 101.39 MB/s	       
+Benchmark8BytesMessages-4                  	20000000	        67.2 ns/op	 178.47 MB/s	       
+Benchmark16BytesMessages-4                 	20000000	        71.4 ns/op	 279.97 MB/s	       
+Benchmark32BytesMessages-4                 	20000000	        91.3 ns/op	 394.12 MB/s	       
+Benchmark64BytesMessages-4                 	10000000	       129 ns/op	 523.85 MB/s	       
+Benchmark128BytesMessages-4                	10000000	       237 ns/op	 554.98 MB/s	       
+Benchmark256BytesMessages-4                	 3000000	       416 ns/op	 624.44 MB/s	       
+Benchmark1KMessages-4                      	 1000000	      1761 ns/op	 583.56 MB/s	       
+Benchmark4KMessages-4                      	  300000	      4974 ns/op	 824.28 MB/s	       
+Benchmark8KMessages-4                      	  300000	      4673 ns/op	1753.75 MB/s	       
 ````
 
 
