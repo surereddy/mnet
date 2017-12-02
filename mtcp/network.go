@@ -41,18 +41,18 @@ const (
 	// which will be helded till Flushed, unless the size of data had exceeded
 	// this size, then rest data gets flushed. Always ensure data written is
 	// within this given size or split properly.
-	ServerClientMaxCollectBufferSize = 9720
+	ServerClientMaxCollectBufferSize = 2720
 
 	// ClientMaxCollectBufferSize sets the collecting buffer size of a Clients.Write
 	// which will be helded till Flushed, unless the size of data had exceeded
 	// this size, then rest data gets flushed. Always ensure data written is
 	// within this given size or split properly.
-	ClientMaxCollectBufferSize = 9720
+	ClientMaxCollectBufferSize = 2720
 
 	// ClientMaxNetConnWriteBuffer sets the maximum allowed buffer size for the interval
 	// writer which limits total call to net.Conn.Write. The buffer collects
 	// data till the ClientMaxNetConnWriteBuffer and writes such to the net.Conn.
-	ClientMaxNetConnWriteBuffer = 66456
+	ClientMaxNetConnWriteBuffer = 69599
 
 	// ClientWriteNetConnDeadline sets the maximum time to await a call to Client.Flush
 	// which will reset the writer to collect more data before writing. This helps

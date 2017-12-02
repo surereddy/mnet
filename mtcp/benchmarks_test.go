@@ -1,12 +1,14 @@
 package mtcp_test
 
 import (
+	"crypto/tls"
 	"math/rand"
 	"net"
 	"testing"
 	"time"
 
 	"github.com/influx6/faux/context"
+	"github.com/influx6/mnet"
 	"github.com/influx6/mnet/mtcp"
 )
 
@@ -142,7 +144,7 @@ func benchThis(b *testing.B, payload []byte) {
 	b.StopTimer()
 
 	ctx := context.New()
-	netw, err := createNewNetwork(ctx, "localhost:5050", nil)
+	netw, err := createBenchmarkNetwork(ctx, "localhost:5050", nil)
 	if err != nil {
 		b.Fatalf("Failed to create network: %+q", err)
 		return
@@ -204,4 +206,29 @@ func (b *writtenBuffer) Write(d []byte) (int, error) {
 	b.c += 1
 	b.totalWritten += len(d)
 	return len(d), nil
+}
+
+func createBenchmarkNetwork(ctx context.CancelContext, addr string, config *tls.Config) (*mtcp.Network, error) {
+	var netw mtcp.Network
+	netw.Addr = addr
+	netw.Metrics = events
+	netw.TLS = config
+	netw.ClientMaxWriteDeadline = 1 * time.Second
+
+	netw.Handler = func(client mnet.Client) error {
+		// Flush all incoming data out
+		for {
+			_, err := client.Read()
+			if err != nil {
+				if err == mnet.ErrNoDataYet {
+					time.Sleep(300 * time.Millisecond)
+					continue
+				}
+
+				return err
+			}
+		}
+	}
+
+	return &netw, netw.Start(ctx)
 }

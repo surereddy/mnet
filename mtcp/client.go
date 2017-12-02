@@ -18,7 +18,7 @@ import (
 const (
 	// DefaultDialTimeout sets the default maximum time in seconds allowed before
 	// a net.Dialer exits attempt to dial a network.
-	DefaultDialTimeout = 1 * time.Second
+	DefaultDialTimeout = 3 * time.Second
 
 	// DefaultKeepAlive sets the default maximum time to keep alive a tcp connection
 	// during no-use. It is used by net.Dialer.
