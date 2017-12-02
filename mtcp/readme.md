@@ -7,7 +7,7 @@ Since `MTCP` expects data to be read or written to be in a format of `[DATASIZE]
 processed this. This is the case to allow colasing multiple writes into a single write where each 
 has a size header that can be read of to know it's individual message length.
 
-`MNet` provides the `SizeAppendWriter` has a followup structure, but due to the fact users write constraints are different, it is not backed into the server or client code, but rather is left up to the user to use as they see fit.
+*`MNet` provides the `SizeAppendWriter` built into the server and client connections which will append appropriate size header within unto provided data. Note, that such writers do have max sizes and must be aware of when using to collect data, has they do push once size is beyond max. This is configurable
 
 
 ## Examples
