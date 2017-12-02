@@ -23,6 +23,9 @@ const (
 	// DefaultKeepAlive sets the default maximum time to keep alive a tcp connection
 	// during no-use. It is used by net.Dialer.
 	DefaultKeepAlive = 3 * time.Minute
+
+	// DefaultReconnectBufferSize sets the size of the buffer during reconnection.
+	DefaultReconnectBufferSize = 1024 * 1024 * 8
 )
 
 // ConnectOptions defines a function type used to apply given
@@ -54,19 +57,19 @@ func ClientWriteInterval(dur time.Duration) ConnectOptions {
 	}
 }
 
-// ClientMaxNetConnWriteBufferSize sets the clientNetwork to use the provided value
+// ClientMaxBuffer sets the clientNetwork to use the provided value
 // as its maximum buffer size for it's writer.
-func ClientMaxNetConnWriteBufferSize(buffer int) ConnectOptions {
+func ClientMaxBuffer(buffer int) ConnectOptions {
 	return func(cm *clientNetwork) {
 		cm.clientMaxWriteSize = buffer
 	}
 }
 
-// ClientMaxCollectionBuffer sets the clientNetwork to use the provided value
+// ClientSizeWriterBuffer sets the clientNetwork to use the provided value
 // as its initial buffer size for it's writer.
-func ClientMaxCollectionBuffer(buffer int) ConnectOptions {
+func ClientSizeWriterBuffer(buffer int) ConnectOptions {
 	return func(cm *clientNetwork) {
-		cm.ClientMaxCollectBufferSize = buffer
+		cm.clientMaxSizeWriteBuffer = buffer
 	}
 }
 
@@ -138,8 +141,8 @@ func Connect(addr string, ops ...ConnectOptions) (mnet.Client, error) {
 		network.keepAliveTimeout = DefaultKeepAlive
 	}
 
-	if network.ClientMaxCollectBufferSize <= 0 {
-		network.ClientMaxCollectBufferSize = ClientMaxCollectBufferSize
+	if network.clientMaxSizeWriteBuffer <= 0 {
+		network.clientMaxSizeWriteBuffer = ClientMaxCollectBufferSize
 	}
 
 	if network.clientMaxWriteDeadline <= 0 {
@@ -160,8 +163,9 @@ func Connect(addr string, ops ...ConnectOptions) (mnet.Client, error) {
 	network.id = c.ID
 	network.addr = addr
 	network.parser = mnet.NewSizedMessageParser()
-	network.buffWriter = mnet.NewBufferedIntervalWriter(&network.scratch, network.clientMaxWriteSize, network.clientMaxWriteDeadline)
-	network.bw = mnet.NewSizeAppenBuffereddWriter(network.buffWriter, network.ClientMaxCollectBufferSize)
+	network.scratch = bytes.NewBuffer(make([]byte, 0, DefaultReconnectBufferSize))
+	network.buffWriter = mnet.NewBufferedIntervalWriter(network.scratch, network.clientMaxWriteSize, network.clientMaxWriteDeadline)
+	network.bw = mnet.NewSizeAppenBuffereddWriter(network.buffWriter, network.clientMaxSizeWriteBuffer)
 
 	c.Metrics = network.metrics
 	c.FlushFunc = network.flush
@@ -181,36 +185,36 @@ func Connect(addr string, ops ...ConnectOptions) (mnet.Client, error) {
 }
 
 type clientNetwork struct {
-	totalReadIn                int64
-	totalWriteOut              int64
-	totalWriteFlush            int64
-	totalInBuff                int64
-	totalreconnects            int64
-	totalbadreconnects         int64
-	totalInCBuff               int64
-	dialTimeout                time.Duration
-	keepAliveTimeout           time.Duration
-	clientMaxWriteSize         int
-	ClientMaxCollectBufferSize int
-	secure                     bool
-	id                         string
-	nid                        string
-	addr                       string
-	localAddr                  net.Addr
-	remoteAddr                 net.Addr
-	do                         sync.Once
-	tls                        *tls.Config
-	clientMaxWriteDeadline     time.Duration
-	worker                     sync.WaitGroup
-	metrics                    metrics.Metrics
-	scratch                    bytes.Buffer
-	dialer                     *net.Dialer
-	parser                     *mnet.SizedMessageParser
-	buffWriter                 *mnet.BufferedIntervalWriter
-	bw                         *mnet.SizeAppendBufferredWriter
-	cu                         sync.RWMutex
-	conn                       net.Conn
-	clientErr                  error
+	totalReadIn              int64
+	totalWriteOut            int64
+	totalWriteFlush          int64
+	totalInBuff              int64
+	totalreconnects          int64
+	totalbadreconnects       int64
+	totalInCBuff             int64
+	dialTimeout              time.Duration
+	keepAliveTimeout         time.Duration
+	clientMaxWriteSize       int
+	clientMaxSizeWriteBuffer int
+	secure                   bool
+	id                       string
+	nid                      string
+	addr                     string
+	localAddr                net.Addr
+	remoteAddr               net.Addr
+	do                       sync.Once
+	tls                      *tls.Config
+	clientMaxWriteDeadline   time.Duration
+	worker                   sync.WaitGroup
+	metrics                  metrics.Metrics
+	scratch                  *bytes.Buffer
+	dialer                   *net.Dialer
+	parser                   *mnet.SizedMessageParser
+	buffWriter               *mnet.BufferedIntervalWriter
+	bw                       *mnet.SizeAppendBufferredWriter
+	cu                       sync.RWMutex
+	conn                     net.Conn
+	clientErr                error
 }
 
 func (cn *clientNetwork) getStatistics(cm mnet.Client) (mnet.Statistics, error) {
@@ -279,7 +283,7 @@ func (cn *clientNetwork) close(cm mnet.Client) error {
 		conn.SetWriteDeadline(time.Now().Add(MaxFlushDeadline))
 		cn.buffWriter.Flush()
 		conn.SetWriteDeadline(time.Time{})
-		cn.buffWriter.Reset(&cn.scratch)
+		cn.buffWriter.Reset(cn.scratch)
 
 		conn.Close()
 	})
@@ -393,32 +397,15 @@ func (cn *clientNetwork) reconnect(cm mnet.Client, altAddr string) error {
 	// use use by writer as well.
 	cn.buffWriter.Reset(nil)
 
-	data := cn.scratch.Bytes()
-
 	// if offline buffer has data written in, before new connection was started,
 	// meaning we have offline data, then first flush this in, then set up new connection as
 	// writer. But if error in write occurs like short write, then set back scratch as buff's
 	// writer, write back data which was not written then return error.
-	if len(data) != 0 {
-		cn.scratch.Reset()
-
-		n, err := conn.Write(data)
-		if n < len(data) && err == nil {
-			err = io.ErrShortWrite
-		}
-
-		if err != nil && err != io.ErrShortWrite {
-			cn.scratch.Write(data[n:])
-			cn.buffWriter.Reset(&cn.scratch)
-			return err
-		}
-
-		if err != nil && err == io.ErrShortWrite {
-			data = data[n:]
-		}
-
-		if err == nil && n == len(data) {
-			data = data[:0]
+	if cn.scratch.Len() != 0 {
+		_, werr := cn.scratch.WriteTo(conn)
+		if werr != nil && werr != io.ErrShortWrite {
+			cn.buffWriter.Reset(cn.scratch)
+			return werr
 		}
 	}
 
@@ -429,11 +416,6 @@ func (cn *clientNetwork) reconnect(cm mnet.Client, altAddr string) error {
 	cn.localAddr = conn.LocalAddr()
 	cn.remoteAddr = conn.RemoteAddr()
 	cn.cu.Unlock()
-
-	// Was it a short write?, then send rest back into buffer.
-	if len(data) != 0 {
-		cn.buffWriter.Write(data)
-	}
 
 	cn.worker.Add(1)
 	go cn.readLoop(cm, conn)

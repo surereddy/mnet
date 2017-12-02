@@ -48,8 +48,8 @@ func TestNonTLSNetworkWithNetConn(t *testing.T) {
 	}
 	tests.Passed("Should have successfully connected to network")
 
-	payload := []byte("pub help")
-	if err := writeMessage(conn, payload); err != nil {
+	payload := makeMessage([]byte("pub help"))
+	if _, err := conn.Write(payload); err != nil {
 		tests.FailedWithError(err, "Should have delivered message to network as client")
 	}
 	tests.Passed("Should have delivered message to network as client")
@@ -114,8 +114,8 @@ func TestTLSNetworkWithNetConn(t *testing.T) {
 	}
 	tests.Passed("Should have successfully Handshaked tls connection")
 
-	payload := []byte("pub help")
-	if err := writeMessage(conn, payload); err != nil {
+	payload := makeMessage([]byte("pub help"))
+	if _, err := conn.Write(payload); err != nil {
 		tests.FailedWithError(err, "Should have delivered message to network as client")
 	}
 	tests.Passed("Should have delivered message to network as client")
@@ -157,12 +157,11 @@ func readMessage(conn net.Conn) ([]byte, error) {
 	return data, nil
 }
 
-func writeMessage(w io.Writer, msg []byte) error {
+func makeMessage(msg []byte) []byte {
 	header := make([]byte, 2, len(msg)+2)
 	binary.BigEndian.PutUint16(header, uint16(len(msg)))
 	header = append(header, msg...)
-	_, err := w.Write(header)
-	return err
+	return header
 }
 
 func createTLSCA() (ca certificates.CertificateAuthority, server, client certificates.CertificateRequest, err error) {
