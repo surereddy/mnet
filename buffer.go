@@ -129,6 +129,10 @@ func (bu *BufferedIntervalWriter) Write(d []byte) (int, error) {
 	dLen := len(d)
 	nextSize := bu.c + dLen
 
+	if bu.c == 0 && nextSize > bu.size {
+		return bu.w.Write(d)
+	}
+
 	if nextSize > bu.size {
 		bu.mu.Unlock()
 		if err := bu.Flush(); err != nil {
