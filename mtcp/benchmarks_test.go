@@ -22,7 +22,7 @@ func BenchmarkNonTLSNetworkWriteWithNetConn(b *testing.B) {
 	b.StopTimer()
 
 	ctx := context.New()
-	netw, err := createNewNetwork(ctx, "localhost:5050", nil)
+	netw, err := createBenchmarkNetwork(ctx, "localhost:5050", nil)
 	if err != nil {
 		b.Fatalf("Failed to create network: %+q", err)
 		return
@@ -53,7 +53,7 @@ func BenchmarkNonTLSNetworkWriteWithClient(b *testing.B) {
 	b.StopTimer()
 
 	ctx := context.New()
-	netw, err := createNewNetwork(ctx, "localhost:5050", nil)
+	netw, err := createBenchmarkNetwork(ctx, "localhost:5050", nil)
 	if err != nil {
 		b.Fatalf("Failed to create network: %+q", err)
 		return
