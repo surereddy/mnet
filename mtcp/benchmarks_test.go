@@ -14,8 +14,8 @@ import (
 )
 
 var (
-	defaultClientSize = 62500
-	defaultNetConn    = 62500
+	defaultClientSize = 30500
+	defaultNetConn    = 30500
 )
 
 func BenchmarkNonTLSNetworkWriteWithNetConn(b *testing.B) {
