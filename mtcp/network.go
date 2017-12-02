@@ -193,7 +193,7 @@ func (nc *networkConn) flush(cm mnet.Client) error {
 
 	atomic.StoreInt64(&nc.totalFlushOut, int64(nc.bw.TotalFlushed()))
 	atomic.StoreInt64(&nc.totalInCBuff, int64(nc.bw.LengthInBuffer()))
-	atomic.StoreInt64(&nc.totalInBuff, int64(nc.buffWriter.Length()))
+	atomic.StoreInt64(&nc.totalInBuff, int64(nc.buffWriter.Buffered()))
 	return nc.bw.Flush()
 }
 

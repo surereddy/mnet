@@ -244,7 +244,7 @@ func (cn *clientNetwork) getLocalAddr(cm mnet.Client) (net.Addr, error) {
 func (cn *clientNetwork) flush(cm mnet.Client) error {
 	atomic.StoreInt64(&cn.totalWriteFlush, int64(cn.bw.TotalFlushed()))
 	atomic.StoreInt64(&cn.totalInCBuff, int64(cn.bw.LengthInBuffer()))
-	atomic.StoreInt64(&cn.totalInBuff, int64(cn.buffWriter.Length()))
+	atomic.StoreInt64(&cn.totalInBuff, int64(cn.buffWriter.Buffered()))
 	err := cn.bw.Flush()
 	if err != nil && err != io.ErrShortWrite {
 		cn.metrics.Emit(

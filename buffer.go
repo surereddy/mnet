@@ -20,21 +20,17 @@ var ErrItemsInBuffer = errors.New("buffer has pending content")
 // as much writes is collected before hitting final writer to
 // minimal write calls for buffer.
 type BufferedIntervalWriter struct {
-	timer                   *time.Timer
-	w                       io.Writer
-	dur                     time.Duration
-	mu                      sync.RWMutex
-	timerStopped            bool
-	buff                    []byte
-	c                       int
-	err                     error
-	size                    int
-	totalReceived           int64
-	totalFlushed            int64
-	totalWrittenDirectlyToW int64
-	lastWrittenDirectlyToW  int64
-	lastFlushed             int64
-	lastWritten             int64
+	timer        *time.Timer
+	w            io.Writer
+	dur          time.Duration
+	mu           sync.RWMutex
+	timerStopped bool
+	buff         []byte
+	c            int
+	err          error
+	size         int
+	totalFlushed int64
+	lastWritten  int64
 }
 
 // NewBufferedIntervalWriter returns new BufferedIntervalWriter whoes has at least the specified size.
@@ -87,24 +83,14 @@ func (bu *BufferedIntervalWriter) Flushed() int {
 	return int(atomic.LoadInt64(&bu.totalFlushed))
 }
 
-// LastWrittenDirectly returns total written in bytes straight to writer instead of buffer since start.
-func (bu *BufferedIntervalWriter) LastWrittenDirectly() int {
-	return int(atomic.LoadInt64(&bu.lastWrittenDirectlyToW))
-}
-
-// WrittenDirectly returns total written in bytes straight to writer instead of buffer since start.
-func (bu *BufferedIntervalWriter) WrittenDirectly() int {
-	return int(atomic.LoadInt64(&bu.totalWrittenDirectlyToW))
-}
-
-// Written returns total written in bytes into buffer since start.
-func (bu *BufferedIntervalWriter) Written() int {
-	return int(atomic.LoadInt64(&bu.totalReceived))
-}
-
-// Length returns the current total length of items in buffer.
-func (bu *BufferedIntervalWriter) Length() int {
+// Buffered returns total of items written into buffer.
+func (bu *BufferedIntervalWriter) Buffered() int {
 	return int(atomic.LoadInt64(&bu.lastWritten))
+}
+
+// Available returns total space available within buffer.
+func (bu *BufferedIntervalWriter) Available() int {
+	return bu.size - bu.Buffered()
 }
 
 // Write writes given data into internal buffer ensuring writes
@@ -129,7 +115,7 @@ func (bu *BufferedIntervalWriter) Write(d []byte) (int, error) {
 	dLen := len(d)
 	nextSize := bu.c + dLen
 
-	if bu.c == 0 && nextSize > bu.size {
+	if bu.c == 0 && dLen > bu.size {
 		return bu.w.Write(d)
 	}
 
@@ -144,7 +130,6 @@ func (bu *BufferedIntervalWriter) Write(d []byte) (int, error) {
 	bu.timer.Reset(bu.dur)
 
 	copied := copy(bu.buff[bu.c:bu.size], d)
-	atomic.AddInt64(&bu.totalReceived, int64(copied))
 	atomic.AddInt64(&bu.lastWritten, int64(copied))
 
 	bu.c += copied
@@ -177,7 +162,6 @@ func (bu *BufferedIntervalWriter) Flush() error {
 
 	n, err := bu.w.Write(bu.buff[0:bu.c])
 	atomic.AddInt64(&bu.totalFlushed, int64(n))
-	atomic.StoreInt64(&bu.lastFlushed, int64(n))
 	if err == nil && n < bu.c {
 		err = io.ErrShortWrite
 	}
@@ -234,9 +218,6 @@ func (bu *BufferedIntervalWriter) Close() error {
 	bu.c = 0
 	bu.w = nil
 	bu.totalFlushed = 0
-	bu.totalReceived = 0
-	bu.totalWrittenDirectlyToW = 0
-	bu.lastFlushed = 0
 	bu.lastWritten = 0
 
 	bu.err = io.ErrClosedPipe
