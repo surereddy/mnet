@@ -259,18 +259,3 @@ func (b *writtenBuffer) Write(d []byte) (int, error) {
 	b.totalWritten += len(d)
 	return len(d), nil
 }
-
-func BenchmarkBufferedIntervalBuffer(b *testing.B) {
-	var writer writtenBuffer
-	bu := mnet.NewBufferedIntervalWriter(&writer, 5024, 1*time.Second)
-
-	content := []byte("Thunder world, Reckage before the dawn")
-
-	var at int
-	for i := 0; i < b.N; i++ {
-		at++
-		bu.Write(content)
-	}
-
-	b.Logf("Written to buffer a total of %d times after %d runs with %d bytes\n", writer.c, at, writer.totalWritten)
-}
