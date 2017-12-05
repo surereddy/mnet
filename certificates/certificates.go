@@ -81,8 +81,8 @@ func (s SerialService) New() (*big.Int, error) {
 // to persist a giving data into an underline store.
 // @mock
 type PersistenceStore interface {
-	Persist(string, []byte) error
-	Retrieve(string) ([]byte, error)
+	Save(string, []byte) error
+	Get(string) ([]byte, error)
 }
 
 // CertificateAuthority defines a struct which contains a generated certificate template with
@@ -429,7 +429,7 @@ func (ca *CertificateAuthority) FromRaw(raw []byte) error {
 
 // Load loads certificate and key from provided PersistenceStore.
 func (ca *CertificateAuthority) Load(store PersistenceStore) error {
-	cert, err := store.Retrieve(certFileName)
+	cert, err := store.Get(certFileName)
 	if err != nil {
 		return err
 	}
@@ -441,7 +441,7 @@ func (ca *CertificateAuthority) Load(store PersistenceStore) error {
 
 	ca.Certificate = certificate
 
-	certKey, err := store.Retrieve(certKeyFileName)
+	certKey, err := store.Get(certKeyFileName)
 	if err != nil {
 		return err
 	}
@@ -468,11 +468,11 @@ func (ca CertificateAuthority) Persist(store PersistenceStore) error {
 		return err
 	}
 
-	if err := store.Persist(certFileName, certBytes); err != nil {
+	if err := store.Save(certFileName, certBytes); err != nil {
 		return err
 	}
 
-	return store.Persist(certKeyFileName, keyBytes)
+	return store.Save(certKeyFileName, keyBytes)
 }
 
 // TLSCertPool returns a new CertPool which contains the certificate for the CA which can
@@ -652,7 +652,7 @@ func (ca CertificateRequest) PrivateKeyRaw() ([]byte, error) {
 
 // Load loads certificate and key from provided PersistenceStore.
 func (ca *CertificateRequest) Load(store PersistenceStore) error {
-	cert, err := store.Retrieve(reqcertFileName)
+	cert, err := store.Get(reqcertFileName)
 	if err != nil {
 		return err
 	}
@@ -664,7 +664,7 @@ func (ca *CertificateRequest) Load(store PersistenceStore) error {
 
 	ca.SecondaryCA.Certificate = certificate
 
-	certKey, err := store.Retrieve(reqcertKeyFileName)
+	certKey, err := store.Get(reqcertKeyFileName)
 	if err != nil {
 		return err
 	}
@@ -677,7 +677,7 @@ func (ca *CertificateRequest) Load(store PersistenceStore) error {
 	ca.PrivateKey = privateKey
 	ca.PublicKey = &privateKey.PublicKey
 
-	rootCACert, err := store.Retrieve(reqcertRootCAFileName)
+	rootCACert, err := store.Get(reqcertRootCAFileName)
 	if err != nil {
 		return err
 	}
@@ -709,15 +709,15 @@ func (ca CertificateRequest) Persist(store PersistenceStore) error {
 		return err
 	}
 
-	if err := store.Persist(reqcertFileName, certBytes); err != nil {
+	if err := store.Save(reqcertFileName, certBytes); err != nil {
 		return err
 	}
 
-	if err := store.Persist(reqcertRootCAFileName, rootCABytes); err != nil {
+	if err := store.Save(reqcertRootCAFileName, rootCABytes); err != nil {
 		return err
 	}
 
-	return store.Persist(reqcertKeyFileName, keyBytes)
+	return store.Save(reqcertKeyFileName, keyBytes)
 }
 
 // IsValid validates that Certificate is still valid with rootCA with accordance to usage.

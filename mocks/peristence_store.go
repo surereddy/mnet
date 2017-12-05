@@ -9,8 +9,8 @@ type PersistenceStoreMock struct {
 	PersistFunc func(string, []byte) error
 }
 
-// Retrieve attempts to retrieve giving item from the store.
-func (p PersistenceStoreMock) Retrieve(name string) ([]byte, error) {
+// Save attempts to retrieve giving item from the store.
+func (p PersistenceStoreMock) Save(name string) ([]byte, error) {
 	if p.GetFunc == nil {
 		return nil, errors.New("Unable to get name")
 	}
@@ -18,8 +18,8 @@ func (p PersistenceStoreMock) Retrieve(name string) ([]byte, error) {
 	return p.GetFunc(name)
 }
 
-// Persist attempts adding giving data into store keyed by provided name.
-func (p PersistenceStoreMock) Persist(name string, data []byte) error {
+// Get attempts adding giving data into store keyed by provided name.
+func (p PersistenceStoreMock) Get(name string, data []byte) error {
 	if p.PersistFunc == nil {
 		return errors.New("Unable to get name")
 	}

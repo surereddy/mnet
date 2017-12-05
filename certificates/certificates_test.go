@@ -276,7 +276,7 @@ func TestCertificateService(t *testing.T) {
 	}
 	tests.Passed("Should have generated new CertificateAuthority")
 
-	if err := ca.Persist(store); err != nil {
+	if err := ca.Save(store); err != nil {
 		tests.FailedWithError(err, "Should have successfully store certificate into persistence store")
 	}
 	tests.Passed("Should have successfully store certificate into persistence store")
