@@ -22,7 +22,7 @@ const (
 	certKeyFileName            = "ca.key"
 	reqcertFileName            = "req_ca.cert"
 	reqcertKeyFileName         = "req_ca.key"
-	reqcertRootCAFileName      = "req_root_ca.key"
+	reqcertRootCAFileName      = "req_root_ca.cert"
 	certTypeName               = "CERTIFICATE"
 	certKeyName                = "RSA PRIVATE KEY"
 )
