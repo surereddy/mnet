@@ -310,13 +310,15 @@ func (n *Network) Start(ctx context.CancelContext) error {
 		n.ID = uuid.NewV4().String()
 	}
 
+	n.Addr = netutils.GetAddr(n.Addr)
+
 	defer n.Metrics.Emit(
 		metrics.Message("Network.Start"),
 		metrics.With("network", n.ID),
+		metrics.With("addr", n.Addr),
 		metrics.WithID(n.ID),
 	)
 
-	n.Addr = netutils.GetAddr(n.Addr)
 	host, _, _ := net.SplitHostPort(n.Addr)
 	if n.TLS != nil && !n.TLS.InsecureSkipVerify {
 		n.TLS.ServerName = host
@@ -368,6 +370,7 @@ func (n *Network) endLogic(ctx context.CancelContext, stream melon.ConnReadWrite
 			metrics.Error(err),
 			metrics.Message("Network.endLogic"),
 			metrics.With("network", n.ID),
+			metrics.With("addr", n.Addr),
 			metrics.WithID(n.ID),
 		)
 	}
@@ -422,6 +425,7 @@ func (n *Network) runStream(stream melon.ConnReadWriteCloser) {
 	defer n.Metrics.Emit(
 		metrics.With("network", n.ID),
 		metrics.Message("Network.runStream"),
+		metrics.With("addr", n.Addr),
 		metrics.WithID(n.ID),
 	)
 
@@ -465,6 +469,7 @@ func (n *Network) runStream(stream melon.ConnReadWriteCloser) {
 				metrics.WithID(n.ID),
 				metrics.With("network", n.ID),
 				metrics.With("client_id", uuid),
+				metrics.With("network-addr", n.Addr),
 				metrics.Info("New Client Connection"),
 				metrics.With("local_addr", conn.LocalAddr()),
 				metrics.With("remote_addr", conn.RemoteAddr()),
