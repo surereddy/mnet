@@ -312,6 +312,10 @@ func (n *Network) Start(ctx context.CancelContext) error {
 	}
 
 	n.Addr = netutils.GetAddr(n.Addr)
+	if n.ServerName == "" {
+		host, _, _ := net.SplitHostPort(n.Addr)
+		n.ServerName = host
+	}
 
 	defer n.Metrics.Emit(
 		metrics.Message("Network.Start"),
@@ -321,15 +325,8 @@ func (n *Network) Start(ctx context.CancelContext) error {
 		metrics.WithID(n.ID),
 	)
 
-	if n.TLS != nil {
-		if n.ServerName == "" {
-			host, _, _ := net.SplitHostPort(n.Addr)
-			if !n.TLS.InsecureSkipVerify {
-				n.TLS.ServerName = host
-			}
-		} else {
-			n.TLS.ServerName = n.ServerName
-		}
+	if n.TLS != nil && !n.TLS.InsecureSkipVerify {
+		n.TLS.ServerName = n.ServerName
 	}
 
 	stream, err := mlisten.Listen("tcp", n.Addr, n.TLS)
