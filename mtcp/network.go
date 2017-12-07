@@ -267,11 +267,12 @@ type networkAction func(*Network)
 
 // Network defines a network which runs ontop of provided mnet.ConnHandler.
 type Network struct {
-	ID      string
-	Addr    string
-	TLS     *tls.Config
-	Handler mnet.ConnHandler
-	Metrics metrics.Metrics
+	ID         string
+	Addr       string
+	ServerName string
+	TLS        *tls.Config
+	Handler    mnet.ConnHandler
+	Metrics    metrics.Metrics
 
 	totalClients         int64
 	totalClosedClients   int64
@@ -316,12 +317,19 @@ func (n *Network) Start(ctx context.CancelContext) error {
 		metrics.Message("Network.Start"),
 		metrics.With("network", n.ID),
 		metrics.With("addr", n.Addr),
+		metrics.With("serverName", n.ServerName),
 		metrics.WithID(n.ID),
 	)
 
-	host, _, _ := net.SplitHostPort(n.Addr)
-	if n.TLS != nil && !n.TLS.InsecureSkipVerify {
-		n.TLS.ServerName = host
+	if n.TLS != nil {
+		if n.ServerName == "" {
+			host, _, _ := net.SplitHostPort(n.Addr)
+			if !n.TLS.InsecureSkipVerify {
+				n.TLS.ServerName = host
+			}
+		} else {
+			n.TLS.ServerName = n.ServerName
+		}
 	}
 
 	stream, err := mlisten.Listen("tcp", n.Addr, n.TLS)
@@ -371,6 +379,7 @@ func (n *Network) endLogic(ctx context.CancelContext, stream melon.ConnReadWrite
 			metrics.Message("Network.endLogic"),
 			metrics.With("network", n.ID),
 			metrics.With("addr", n.Addr),
+			metrics.With("serverName", n.ServerName),
 			metrics.WithID(n.ID),
 		)
 	}
@@ -426,6 +435,7 @@ func (n *Network) runStream(stream melon.ConnReadWriteCloser) {
 		metrics.With("network", n.ID),
 		metrics.Message("Network.runStream"),
 		metrics.With("addr", n.Addr),
+		metrics.With("serverName", n.ServerName),
 		metrics.WithID(n.ID),
 	)
 
@@ -470,6 +480,7 @@ func (n *Network) runStream(stream melon.ConnReadWriteCloser) {
 				metrics.With("network", n.ID),
 				metrics.With("client_id", uuid),
 				metrics.With("network-addr", n.Addr),
+				metrics.With("serverName", n.ServerName),
 				metrics.Info("New Client Connection"),
 				metrics.With("local_addr", conn.LocalAddr()),
 				metrics.With("remote_addr", conn.RemoteAddr()),
