@@ -239,7 +239,7 @@ func createNewNetwork(ctx context.CancelContext, addr string, config *tls.Config
 				client.Write([]byte(fmt.Sprintf("subscribed to %+s\r\n", rest)))
 			}
 
-			if err := client.Flush(); err != nil {
+			if err := client.Flush(false); err != nil {
 				if err == io.ErrShortWrite {
 					continue
 				}
