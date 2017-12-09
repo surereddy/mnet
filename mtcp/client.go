@@ -245,7 +245,7 @@ func (cn *clientNetwork) flush(cm mnet.Client, directWrite bool) error {
 	cn.cu.RLock()
 	if cn.clientErr != nil {
 		cn.cu.RUnlock()
-		return 0, cn.clientErr
+		return cn.clientErr
 	}
 	cn.cu.RUnlock()
 
