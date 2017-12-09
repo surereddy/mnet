@@ -306,10 +306,9 @@ func (wb *SizeAppendBufferredWriter) Flush() error {
 		return err
 	}
 
-	wb.c = 2
 	wb.rc = 0
+	wb.c = 2
 	atomic.StoreInt64(&wb.rcc, 0)
-	wb.data = wb.data[:2]
 
 	return nil
 }
@@ -324,8 +323,9 @@ func (wb *SizeAppendBufferredWriter) Write(d []byte) (int, error) {
 		return 0, nil
 	}
 
-	// if we have filled up possible size area, then flush first.
-	if len(d)+wb.c > wb.m {
+	// What we have as current limit, does it exceed our expected next length?
+	nextSize := len(d) + wb.c
+	if nextSize >= wb.m {
 		if err := wb.Flush(); err != nil {
 			return 0, err
 		}
