@@ -242,6 +242,13 @@ func (cn *clientNetwork) getLocalAddr(cm mnet.Client) (net.Addr, error) {
 }
 
 func (cn *clientNetwork) flush(cm mnet.Client, directWrite bool) error {
+	cn.cu.RLock()
+	if cn.clientErr != nil {
+		cn.cu.RUnlock()
+		return 0, cn.clientErr
+	}
+	cn.cu.RUnlock()
+
 	atomic.StoreInt64(&cn.totalWriteFlush, int64(cn.bw.TotalFlushed()))
 	atomic.StoreInt64(&cn.totalInCBuff, int64(cn.bw.LengthInBuffer()))
 	atomic.StoreInt64(&cn.totalInBuff, int64(cn.buffWriter.Buffered()))
@@ -303,6 +310,13 @@ func (cn *clientNetwork) close(cm mnet.Client) error {
 }
 
 func (cn *clientNetwork) write(cm mnet.Client, d []byte) (int, error) {
+	cn.cu.RLock()
+	if cn.clientErr != nil {
+		cn.cu.RUnlock()
+		return 0, cn.clientErr
+	}
+	cn.cu.RUnlock()
+
 	n, err := cn.bw.Write(d)
 	atomic.AddInt64(&cn.totalWriteOut, int64(n))
 	if err != nil && err != io.ErrShortWrite {
@@ -318,6 +332,12 @@ func (cn *clientNetwork) write(cm mnet.Client, d []byte) (int, error) {
 }
 
 func (cn *clientNetwork) read(cm mnet.Client) ([]byte, error) {
+	cn.cu.RLock()
+	if cn.clientErr != nil {
+		cn.cu.RUnlock()
+		return nil, cn.clientErr
+	}
+	cn.cu.RUnlock()
 	return cn.parser.Next()
 }
 

@@ -2,6 +2,7 @@ package certificates_test
 
 import (
 	"bytes"
+	"crypto/x509"
 	"testing"
 	"time"
 
@@ -220,6 +221,11 @@ func TestCertificateRequestRawLoading(t *testing.T) {
 	}
 	tests.Passed("Should have generated new CertificateRequest")
 
+	if err = ca.VerifyCA(reqCA.SecondaryCA.Certificate, []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth}); err != nil {
+		tests.FailedWithError(err, "Should have verified certificate through CA")
+	}
+	tests.Passed("Should have verified certificate through CA")
+
 	if _, err = reqCA.TLSCertPool(); err != nil {
 		tests.FailedWithError(err, "Should have successfully created x409.CertPool")
 	}
@@ -276,7 +282,7 @@ func TestCertificateService(t *testing.T) {
 	}
 	tests.Passed("Should have generated new CertificateAuthority")
 
-	if err := ca.Save(store); err != nil {
+	if err := ca.Persist(store); err != nil {
 		tests.FailedWithError(err, "Should have successfully store certificate into persistence store")
 	}
 	tests.Passed("Should have successfully store certificate into persistence store")

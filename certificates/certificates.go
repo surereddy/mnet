@@ -166,9 +166,9 @@ func (sca SecondaryCertificateAuthority) Raw() ([]byte, error) {
 	return raw.Bytes(), nil
 }
 
-// VertifyCA validates provided Certificate is still valid with CeritifcateAuthority's CA 
+// VerifyCA validates provided Certificate is still valid with CeritifcateAuthority's CA
 // with accordance to usage slice.
-func (ca CertificateAuthority) VertifyCA(cas *x509.Certificate,keyUsage []x509.ExtKeyUsage) error {
+func (ca CertificateAuthority) VerifyCA(cas *x509.Certificate, keyUsage []x509.ExtKeyUsage) error {
 	if ca.Certificate == nil {
 		return ErrNoCertificate
 	}
@@ -176,7 +176,10 @@ func (ca CertificateAuthority) VertifyCA(cas *x509.Certificate,keyUsage []x509.E
 	certpool := x509.NewCertPool()
 	certpool.AddCert(ca.Certificate)
 	options := x509.VerifyOptions{Roots: certpool, KeyUsages: keyUsage}
-	return cas Certificate.Verify(options)
+	if _, err := cas.Verify(options); err != nil {
+		return err
+	}
+	return nil
 }
 
 // ApproveServerClientCertificateSigningRequest processes the provided CertificateRequest returning a new CertificateAuthorty
