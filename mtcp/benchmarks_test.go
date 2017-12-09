@@ -73,7 +73,7 @@ func BenchmarkNonTLSNetworkWriteWithClient(b *testing.B) {
 		client.Write(payload)
 	}
 
-	client.Flush()
+	client.Flush(true)
 	b.StopTimer()
 	client.Close()
 	ctx.Cancel()
@@ -103,7 +103,7 @@ func benchThis(b *testing.B, payload []byte) {
 		client.Write(payload)
 	}
 
-	client.Flush()
+	client.Flush(true)
 
 	b.StopTimer()
 	client.Close()

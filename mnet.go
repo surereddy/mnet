@@ -26,6 +26,10 @@ type ClientSiblingsFunc func(Client) ([]Client, error)
 // returns a possible error.
 type ClientFunc func(Client) error
 
+// ClientFlushFunc defines a function type which is used to flush written data
+// receives a Client type and returns a possible error.
+type ClientFlushFunc func(Client, bool) error
+
 // ClientAddrFunc returns a net.Addr associated with a given client else
 // an error.
 type ClientAddrFunc func(Client) (net.Addr, error)
@@ -109,8 +113,8 @@ type Client struct {
 	RemoteAddrFunc   ClientAddrFunc
 	ReaderFunc       ReaderFunc
 	WriteFunc        WriteFunc
-	FlushFunc        ClientFunc
 	CloseFunc        ClientFunc
+	FlushFunc        ClientFlushFunc
 	SiblingsFunc     ClientSiblingsFunc
 	StatisticFunc    ClientStatisticsFunc
 	ReconnectionFunc ClientReconnectionFunc
@@ -215,12 +219,12 @@ func (c Client) Write(data []byte) (int, error) {
 
 // Flush sends all accumulated message within clients buffer into
 // connection.
-func (c Client) Flush() error {
+func (c Client) Flush(directWrite bool) error {
 	if c.FlushFunc == nil {
 		return ErrFlushNotAllowed
 	}
 
-	return c.FlushFunc(c)
+	return c.FlushFunc(c, directWrite)
 }
 
 // Statistics returns statistics associated with client.j

@@ -2,6 +2,7 @@ package mtcp
 
 import (
 	"crypto/tls"
+	"io"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -141,7 +142,6 @@ func (nc *networkConn) closeConnection() error {
 	nc.network.cu.Unlock()
 
 	nc.do.Do(func() {
-		// nc.bw.Flush()
 		nc.buffWriter.StopTimer()
 		nc.conn.SetWriteDeadline(time.Now().Add(MaxFlushDeadline))
 		nc.buffWriter.Flush()
@@ -179,7 +179,7 @@ func (nc *networkConn) closeConn(cm mnet.Client) error {
 	return nc.closeConnection()
 }
 
-func (nc *networkConn) flush(cm mnet.Client) error {
+func (nc *networkConn) flush(cm mnet.Client, directWrite bool) error {
 	nc.mu.RLock()
 	if nc.Err != nil {
 		nc.mu.RUnlock()
@@ -194,7 +194,15 @@ func (nc *networkConn) flush(cm mnet.Client) error {
 	atomic.StoreInt64(&nc.totalFlushOut, int64(nc.bw.TotalFlushed()))
 	atomic.StoreInt64(&nc.totalInCBuff, int64(nc.bw.LengthInBuffer()))
 	atomic.StoreInt64(&nc.totalInBuff, int64(nc.buffWriter.Buffered()))
-	return nc.bw.Flush()
+	if err := nc.bw.Flush(); err != nil && err != io.ErrShortWrite {
+		return err
+	}
+
+	if directWrite {
+		return nc.buffWriter.Flush()
+	}
+
+	return nil
 }
 
 // read returns data from the underline message list.

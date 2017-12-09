@@ -32,7 +32,7 @@ func TestNonTLSNetworkWithClient(t *testing.T) {
 	}
 	tests.Passed("Should have successfully written payload to client")
 
-	if ferr := client.Flush(); ferr != nil {
+	if ferr := client.Flush(false); ferr != nil {
 		tests.FailedWithError(ferr, "Should have successfully flush data to network")
 	}
 	tests.Passed("Should have successfully flush data to network")
@@ -110,7 +110,7 @@ func TestTLSNetworkWithClient(t *testing.T) {
 	}
 	tests.Passed("Should have successfully written payload to client")
 
-	if ferr := client.Flush(); ferr != nil {
+	if ferr := client.Flush(false); ferr != nil {
 		tests.FailedWithError(ferr, "Should have successfully flush data to network")
 	}
 	tests.Passed("Should have successfully flush data to network")

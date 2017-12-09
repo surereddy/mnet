@@ -241,7 +241,7 @@ func (cn *clientNetwork) getLocalAddr(cm mnet.Client) (net.Addr, error) {
 	return cn.localAddr, nil
 }
 
-func (cn *clientNetwork) flush(cm mnet.Client) error {
+func (cn *clientNetwork) flush(cm mnet.Client, directWrite bool) error {
 	atomic.StoreInt64(&cn.totalWriteFlush, int64(cn.bw.TotalFlushed()))
 	atomic.StoreInt64(&cn.totalInCBuff, int64(cn.bw.LengthInBuffer()))
 	atomic.StoreInt64(&cn.totalInBuff, int64(cn.buffWriter.Buffered()))
@@ -255,6 +255,11 @@ func (cn *clientNetwork) flush(cm mnet.Client) error {
 		)
 		cn.close(cm)
 	}
+
+	if directWrite {
+		return cn.buffWriter.Flush()
+	}
+
 	return err
 }
 
