@@ -270,45 +270,6 @@ func (cn *clientNetwork) flush(cm mnet.Client, directWrite bool) error {
 	return err
 }
 
-func (cn *clientNetwork) close(cm mnet.Client) error {
-	cn.cu.RLock()
-	if cn.clientErr != nil {
-		cn.cu.RUnlock()
-		return cn.clientErr
-	}
-	cn.cu.RUnlock()
-
-	cn.metrics.Emit(
-		metrics.WithID(cn.id),
-		metrics.With("network", cn.nid),
-		metrics.Message("clientNetwork.close"),
-	)
-
-	cn.cu.Lock()
-	conn := cn.conn
-	cn.conn = nil
-	cn.cu.Unlock()
-
-	cn.do.Do(func() {
-		cn.buffWriter.StopTimer()
-
-		conn.SetWriteDeadline(time.Now().Add(MaxFlushDeadline))
-		cn.buffWriter.Flush()
-		conn.SetWriteDeadline(time.Time{})
-		cn.buffWriter.Reset(cn.scratch)
-
-		conn.Close()
-	})
-
-	cn.cu.Lock()
-	cn.clientErr = mnet.ErrAlreadyClosed
-	cn.cu.Unlock()
-
-	cn.worker.Wait()
-
-	return nil
-}
-
 func (cn *clientNetwork) write(cm mnet.Client, d []byte) (int, error) {
 	cn.cu.RLock()
 	if cn.clientErr != nil {
@@ -382,6 +343,45 @@ func (cn *clientNetwork) readLoop(cm mnet.Client, conn net.Conn) {
 			incoming = incoming[0 : MaxBufferSize/2]
 		}
 	}
+}
+
+func (cn *clientNetwork) close(cm mnet.Client) error {
+	cn.cu.RLock()
+	if cn.clientErr != nil {
+		cn.cu.RUnlock()
+		return cn.clientErr
+	}
+	cn.cu.RUnlock()
+
+	cn.metrics.Emit(
+		metrics.WithID(cn.id),
+		metrics.With("network", cn.nid),
+		metrics.Message("clientNetwork.close"),
+	)
+
+	cn.cu.Lock()
+	conn := cn.conn
+	cn.conn = nil
+	cn.cu.Unlock()
+
+	cn.do.Do(func() {
+		cn.buffWriter.StopTimer()
+
+		conn.SetWriteDeadline(time.Now().Add(MaxFlushDeadline))
+		cn.buffWriter.Flush()
+		conn.SetWriteDeadline(time.Time{})
+		cn.buffWriter.Reset(cn.scratch)
+
+		conn.Close()
+	})
+
+	cn.cu.Lock()
+	cn.clientErr = mnet.ErrAlreadyClosed
+	cn.cu.Unlock()
+
+	cn.worker.Wait()
+
+	return nil
 }
 
 func (cn *clientNetwork) reconnect(cm mnet.Client, altAddr string) error {
