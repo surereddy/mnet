@@ -168,6 +168,7 @@ func Connect(addr string, ops ...ConnectOptions) (mnet.Client, error) {
 	network.bw = mnet.NewSizeAppenBuffereddWriter(network.buffWriter, network.clientMaxSizeWriteBuffer)
 
 	c.Metrics = network.metrics
+	c.LiveFunc = network.isLive
 	c.FlushFunc = network.flush
 	c.ReaderFunc = network.read
 	c.WriteFunc = network.write
@@ -227,6 +228,17 @@ func (cn *clientNetwork) getStatistics(cm mnet.Client) (mnet.Statistics, error) 
 	stats.TotalFailedReconnects = atomic.LoadInt64(&cn.totalbadreconnects)
 	stats.TotalBytesInCollectBuffer = atomic.LoadInt64(&cn.totalInCBuff)
 	return stats, nil
+}
+
+// isLive returns error if clientNetwork is not connected to remote network.
+func (cn *clientNetwork) isLive(cm mnet.Client) error {
+	cn.cu.RLock()
+	if cn.clientErr != nil {
+		cn.cu.RUnlock()
+		return cn.clientErr
+	}
+	cn.cu.RUnlock()
+	return nil
 }
 
 func (cn *clientNetwork) getRemoteAddr(cm mnet.Client) (net.Addr, error) {
@@ -435,6 +447,7 @@ func (cn *clientNetwork) reconnect(cm mnet.Client, altAddr string) error {
 	}
 
 	cn.cu.Lock()
+	cn.clientErr = nil
 	cn.do = sync.Once{}
 	cn.conn = conn
 	cn.buffWriter.Reset(conn)

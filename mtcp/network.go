@@ -175,6 +175,17 @@ func (nc *networkConn) getLocalAddr(cm mnet.Client) (net.Addr, error) {
 	return nc.localAddr, nil
 }
 
+// isLive returns an error if networkconn is disconnected from network.
+func (nc *networkConn) isLive(cm mnet.Client) error {
+	nc.mu.RLock()
+	if nc.Err != nil {
+		nc.mu.RUnlock()
+		return nc.Err
+	}
+	nc.mu.RUnlock()
+	return nil
+}
+
 func (nc *networkConn) closeConn(cm mnet.Client) error {
 	return nc.closeConnection()
 }
@@ -503,6 +514,7 @@ func (n *Network) runStream(stream melon.ConnReadWriteCloser) {
 			cn.buffWriter = mnet.NewBufferedIntervalWriter(conn, n.ClientMaxWriteSize, n.ClientMaxWriteDeadline)
 			cn.bw = mnet.NewSizeAppenBuffereddWriter(cn.buffWriter, n.ClientInitialWriteSize)
 
+			client.LiveFunc = cn.isLive
 			client.ReaderFunc = cn.read
 			client.WriteFunc = cn.write
 			client.FlushFunc = cn.flush

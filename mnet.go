@@ -51,6 +51,7 @@ var (
 	ErrStillConnected                = errors.New("connection still active")
 	ErrAlreadyClosed                 = errors.New("already closed connection")
 	ErrReadNotAllowed                = errors.New("reading not allowed")
+	ErrLiveCheckNotAllowed           = errors.New("live status not allowed or supported")
 	ErrWriteNotAllowed               = errors.New("data writing not allowed")
 	ErrCloseNotAllowed               = errors.New("closing not allowed")
 	ErrBufferExpansionNotAllowed     = errors.New("buffer expansion not allowed")
@@ -114,6 +115,7 @@ type Client struct {
 	ReaderFunc       ReaderFunc
 	WriteFunc        WriteFunc
 	CloseFunc        ClientFunc
+	LiveFunc         ClientFunc
 	FlushFunc        ClientFlushFunc
 	SiblingsFunc     ClientSiblingsFunc
 	StatisticFunc    ClientStatisticsFunc
@@ -170,6 +172,31 @@ func (c Client) RemoteAddr() (net.Addr, error) {
 	}
 
 	return addr, nil
+}
+
+// Live returns an error if client is not currently live or connected to
+// network. Allows to know current status of client.
+func (c Client) Live() error {
+	c.Metrics.Emit(
+		metrics.WithID(c.ID),
+		metrics.Message("Client.Live"),
+		metrics.With("network", c.NID),
+	)
+	if c.LiveFunc == nil {
+		return ErrLiveCheckNotAllowed
+	}
+
+	if err := c.LiveFunc(c); err != nil {
+		c.Metrics.Emit(
+			metrics.Error(err),
+			metrics.WithID(c.ID),
+			metrics.Message("Client.Live"),
+			metrics.With("network", c.NID),
+		)
+		return err
+	}
+
+	return nil
 }
 
 // Reconnect attempts to reconnect with external endpoint.
