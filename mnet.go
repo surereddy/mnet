@@ -2,7 +2,7 @@ package mnet
 
 import (
 	"errors"
-	"fmt"
+	"io"
 	"net"
 
 	"github.com/influx6/faux/metrics"
@@ -17,7 +17,7 @@ type ConnHandler func(Client) error
 type ReaderFunc func(Client) ([]byte, error)
 
 // WriteFunc defines a function type which takes a client and writes out data.
-type WriteFunc func(Client, []byte) (int, error)
+type WriteFunc func(Client, int) (io.WriteCloser, error)
 
 // ClientSiblingsFunc defines a function which returns a list of sibling funcs.
 type ClientSiblingsFunc func(Client) ([]Client, error)
@@ -25,10 +25,6 @@ type ClientSiblingsFunc func(Client) ([]Client, error)
 // ClientFunc defines a function type which receives a Client type and
 // returns a possible error.
 type ClientFunc func(Client) error
-
-// ClientFlushFunc defines a function type which is used to flush written data
-// receives a Client type and returns a possible error.
-type ClientFlushFunc func(Client, bool) error
 
 // ClientAddrFunc returns a net.Addr associated with a given client else
 // an error.
@@ -43,10 +39,11 @@ type ClientReconnectionFunc func(Client, string) error
 
 // ClientStatisticsFunc defines a function type which returns a Statistics
 // structs related to the user.
-type ClientStatisticsFunc func(Client) (Statistics, error)
+type ClientStatisticsFunc func(Client) (ClientStatistic, error)
 
 // errors ...
 var (
+	ErrNoDataYet                     = errors.New("data is not yet available for reading")
 	ErrNoHostNameInAddr              = errors.New("addr must have hostname")
 	ErrStillConnected                = errors.New("connection still active")
 	ErrAlreadyClosed                 = errors.New("already closed connection")
@@ -62,47 +59,29 @@ var (
 	ErrClientReconnectionUnavailable = errors.New("client reconnection not available")
 )
 
-// Statistics defines a struct ment to hold granular information regarding
+// NetworkStatistic defines a struct ment to hold granular information regarding
 // network activities.
-type Statistics struct {
-	TotalWrittenMessages      int64
-	TotalReadMessages         int64
-	TotalWrittenInBytes       int64
-	TotalReadInBytes          int64
-	TotalBytesInBuffer        int64
-	TotalBytesInCollectBuffer int64
-	TotalFlushedInBytes       int64
-	TotalClients              int64
-	TotalClientsClosed        int64
-	TotalReconnects           int64
-	TotalFailedReconnects     int64
+type NetworkStatistic struct {
+	ID           string
+	Addr         string
+	TotalClients int64
+	TotalClosed  int64
+	TotalOpened  int64
+	TotalActive  int64
 }
 
-// String returns string version of Statistics.
-func (s Statistics) String() string {
-	return fmt.Sprintf(`TotalClients: %d
-TotalClientsClosed: %d
-TotalReconnects: %d
-TotalFailedReconnects: %d
-TotalMessagesWritten: %d
-TotalMessagesRead: %d
-TotalBytesWritten: %d Bytes
-TotalBytesRead: %d Bytes
-TotalBytesInClientBuffer: %d Bytes
-TotalBytesInClientCollectBuffer: %d Bytes
-TotalBytesFlushed: %d Bytes`,
-		s.TotalClients,
-		s.TotalClientsClosed,
-		s.TotalReconnects,
-		s.TotalFailedReconnects,
-		s.TotalWrittenMessages,
-		s.TotalReadMessages,
-		s.TotalWrittenInBytes,
-		s.TotalReadInBytes,
-		s.TotalBytesInBuffer,
-		s.TotalBytesInCollectBuffer,
-		s.TotalFlushedInBytes,
-	)
+// ClientStatistic defines a struct ment to hold granular information regarding
+// network activities.
+type ClientStatistic struct {
+	ID              string
+	Local           net.Addr
+	Remote          net.Addr
+	MessagesRead    int64
+	MessagesWritten int64
+	BytesWritten    int64
+	BytesRead       int64
+	BytesFlushed    int64
+	Reconnects      int64
 }
 
 // Client holds a given information regarding a given network connection.
@@ -116,7 +95,7 @@ type Client struct {
 	WriteFunc        WriteFunc
 	CloseFunc        ClientFunc
 	LiveFunc         ClientFunc
-	FlushFunc        ClientFlushFunc
+	FlushFunc        ClientFunc
 	SiblingsFunc     ClientSiblingsFunc
 	StatisticFunc    ClientStatisticsFunc
 	ReconnectionFunc ClientReconnectionFunc
@@ -236,26 +215,26 @@ func (c Client) Read() ([]byte, error) {
 }
 
 // Write writes provided data into connection without any deadline.
-func (c Client) Write(data []byte) (int, error) {
+func (c Client) Write(toWriteSize int) (io.WriteCloser, error) {
 	if c.WriteFunc == nil {
-		return 0, ErrWriteNotAllowed
+		return nil, ErrWriteNotAllowed
 	}
 
-	return c.WriteFunc(c, data)
+	return c.WriteFunc(c, toWriteSize)
 }
 
 // Flush sends all accumulated message within clients buffer into
 // connection.
-func (c Client) Flush(directWrite bool) error {
+func (c Client) Flush() error {
 	if c.FlushFunc == nil {
 		return ErrFlushNotAllowed
 	}
 
-	return c.FlushFunc(c, directWrite)
+	return c.FlushFunc(c)
 }
 
 // Statistics returns statistics associated with client.j
-func (c Client) Statistics() (Statistics, error) {
+func (c Client) Statistics() (ClientStatistic, error) {
 	c.Metrics.Emit(
 		metrics.WithID(c.ID),
 		metrics.Message("Client.Statistics"),
@@ -263,7 +242,7 @@ func (c Client) Statistics() (Statistics, error) {
 	)
 
 	if c.StatisticFunc == nil {
-		return Statistics{}, ErrStatisticsNotProvided
+		return ClientStatistic{}, ErrStatisticsNotProvided
 	}
 
 	return c.StatisticFunc(c)

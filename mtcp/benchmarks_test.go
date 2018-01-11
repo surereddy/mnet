@@ -8,7 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/influx6/faux/context"
+	"context"
+
 	"github.com/influx6/mnet"
 	"github.com/influx6/mnet/mtcp"
 )
@@ -21,7 +22,7 @@ var (
 func BenchmarkNonTLSNetworkWriteWithNetConn(b *testing.B) {
 	b.StopTimer()
 
-	ctx := context.New()
+	ctx, cancel := context.WithCancel(context.Background())
 	netw, err := createBenchmarkNetwork(ctx, "localhost:5050", nil)
 	if err != nil {
 		b.Fatalf("Failed to create network: %+q", err)
@@ -46,20 +47,20 @@ func BenchmarkNonTLSNetworkWriteWithNetConn(b *testing.B) {
 	bw.Flush()
 	b.StopTimer()
 	conn.Close()
-	ctx.Cancel()
+	cancel()
 	netw.Wait()
 }
 func BenchmarkNonTLSNetworkWriteWithClient(b *testing.B) {
 	b.StopTimer()
 
-	ctx := context.New()
+	ctx, cancel := context.WithCancel(context.Background())
 	netw, err := createBenchmarkNetwork(ctx, "localhost:5050", nil)
 	if err != nil {
 		b.Fatalf("Failed to create network: %+q", err)
 		return
 	}
 
-	client, err := mtcp.Connect("localhost:5050", mtcp.Metrics(events), mtcp.ClientSizeWriterBuffer(defaultClientSize))
+	client, err := mtcp.Connect("localhost:5050", mtcp.Metrics(events), mtcp.MaxBuffer(defaultClientSize))
 	if err != nil {
 		b.Fatalf("Failed to dial network %+q", err)
 		return
@@ -70,27 +71,30 @@ func BenchmarkNonTLSNetworkWriteWithClient(b *testing.B) {
 	b.StartTimer()
 	b.SetBytes(int64(len(payload)))
 	for i := 0; i < b.N; i++ {
-		client.Write(payload)
+		if w, err := client.Write(len(payload)); err == nil {
+			w.Write(payload)
+			w.Close()
+		}
 	}
 
-	client.Flush(true)
+	client.Flush()
 	b.StopTimer()
 	client.Close()
-	ctx.Cancel()
+	cancel()
 	netw.Wait()
 }
 
 func benchThis(b *testing.B, payload []byte) {
 	b.StopTimer()
 
-	ctx := context.New()
+	ctx, cancel := context.WithCancel(context.Background())
 	netw, err := createBenchmarkNetwork(ctx, "localhost:5050", nil)
 	if err != nil {
 		b.Fatalf("Failed to create network: %+q", err)
 		return
 	}
 
-	client, err := mtcp.Connect("localhost:5050", mtcp.Metrics(events), mtcp.ClientSizeWriterBuffer(defaultClientSize))
+	client, err := mtcp.Connect("localhost:5050", mtcp.Metrics(events), mtcp.MaxBuffer(defaultClientSize))
 	if err != nil {
 		b.Fatalf("Failed to dial network %+q", err)
 		return
@@ -100,14 +104,17 @@ func benchThis(b *testing.B, payload []byte) {
 	b.StartTimer()
 
 	for i := 0; i < b.N; i++ {
-		client.Write(payload)
+		if w, err := client.Write(len(payload)); err == nil {
+			w.Write(payload)
+			w.Close()
+		}
 	}
 
-	client.Flush(true)
+	client.Flush()
 
 	b.StopTimer()
 	client.Close()
-	ctx.Cancel()
+	cancel()
 	netw.Wait()
 }
 func BenchmarkNoBytesMessages(b *testing.B) {
@@ -213,7 +220,7 @@ func (b *writtenBuffer) Write(d []byte) (int, error) {
 	return len(d), nil
 }
 
-func createBenchmarkNetwork(ctx context.CancelContext, addr string, config *tls.Config) (*mtcp.Network, error) {
+func createBenchmarkNetwork(ctx context.Context, addr string, config *tls.Config) (*mtcp.Network, error) {
 	var netw mtcp.Network
 	netw.Addr = addr
 	netw.Metrics = events

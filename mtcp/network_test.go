@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -12,7 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/influx6/faux/context"
+	"context"
+
 	"github.com/influx6/faux/metrics"
 	"github.com/influx6/faux/metrics/custom"
 	"github.com/influx6/faux/tests"
@@ -35,7 +37,7 @@ func initMetrics() {
 func TestNonTLSNetworkWithNetConn(t *testing.T) {
 	initMetrics()
 
-	ctx := context.New()
+	ctx, cancel := context.WithCancel(context.Background())
 	netw, err := createNewNetwork(ctx, "localhost:4050", nil)
 	if err != nil {
 		tests.FailedWithError(err, "Should have successfully create network")
@@ -69,7 +71,7 @@ func TestNonTLSNetworkWithNetConn(t *testing.T) {
 	tests.Passed("Should have successfully matched expected data with received from network")
 
 	conn.Close()
-	ctx.Cancel()
+	cancel()
 
 	netw.Wait()
 }
@@ -96,7 +98,7 @@ func TestTLSNetworkWithNetConn(t *testing.T) {
 
 	clientTls.ServerName = "localhost"
 
-	ctx := context.New()
+	ctx, cancel := context.WithCancel(context.Background())
 	netw, err := createNewNetwork(ctx, "localhost:4050", serverTls)
 	if err != nil {
 		tests.FailedWithError(err, "Should have successfully create network")
@@ -135,31 +137,35 @@ func TestTLSNetworkWithNetConn(t *testing.T) {
 	tests.Passed("Should have successfully matched expected data with received from network")
 
 	conn.Close()
-	ctx.Cancel()
+	cancel()
 
 	netw.Wait()
 }
 
 func readMessage(conn net.Conn) ([]byte, error) {
-	incoming := make([]byte, 2)
-	_, err := conn.Read(incoming)
+	incoming := make([]byte, 4)
+	n, err := conn.Read(incoming)
 	if err != nil {
 		return nil, err
 	}
 
-	expectedLen := binary.BigEndian.Uint16(incoming)
+	expectedLen := binary.BigEndian.Uint32(incoming[:n])
 	data := make([]byte, expectedLen)
-	_, err = conn.Read(data)
+	n, err = conn.Read(data)
 	if err != nil {
 		return nil, err
 	}
 
-	return data, nil
+	if n != int(expectedLen) {
+		return data, errors.New("expected length unmarched")
+	}
+
+	return data[:n], nil
 }
 
 func makeMessage(msg []byte) []byte {
-	header := make([]byte, 2, len(msg)+2)
-	binary.BigEndian.PutUint16(header, uint16(len(msg)))
+	header := make([]byte, 4, len(msg)+4)
+	binary.BigEndian.PutUint32(header, uint32(len(msg)))
 	header = append(header, msg...)
 	return header
 }
@@ -205,7 +211,7 @@ func createTLSCA() (ca certificates.CertificateAuthority, server, client certifi
 	return
 }
 
-func createNewNetwork(ctx context.CancelContext, addr string, config *tls.Config) (*mtcp.Network, error) {
+func createNewNetwork(ctx context.Context, addr string, config *tls.Config) (*mtcp.Network, error) {
 	var netw mtcp.Network
 	netw.Addr = addr
 	netw.Metrics = events
@@ -234,12 +240,26 @@ func createNewNetwork(ctx context.CancelContext, addr string, config *tls.Config
 
 			switch command {
 			case "pub":
-				client.Write([]byte(fmt.Sprintf("now publishing to %+s\r\n", rest)))
+				res := []byte(fmt.Sprintf("now publishing to %+s\r\n", rest))
+				w, err := client.Write(len(res))
+				if err != nil {
+					return err
+				}
+
+				w.Write(res)
+				w.Close()
 			case "sub":
-				client.Write([]byte(fmt.Sprintf("subscribed to %+s\r\n", rest)))
+				res := []byte(fmt.Sprintf("subscribed to %+s\r\n", rest))
+				w, err := client.Write(len(res))
+				if err != nil {
+					return err
+				}
+
+				w.Write(res)
+				w.Close()
 			}
 
-			if err := client.Flush(false); err != nil {
+			if err := client.Flush(); err != nil {
 				if err == io.ErrShortWrite {
 					continue
 				}

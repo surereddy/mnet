@@ -1,6 +1,7 @@
 package mtcp
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/tls"
 	"io"
@@ -9,23 +10,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"encoding/binary"
+
 	"github.com/influx6/faux/metrics"
 	"github.com/influx6/faux/netutils"
 	"github.com/influx6/mnet"
 	uuid "github.com/satori/go.uuid"
-)
-
-const (
-	// DefaultDialTimeout sets the default maximum time in seconds allowed before
-	// a net.Dialer exits attempt to dial a network.
-	DefaultDialTimeout = 3 * time.Second
-
-	// DefaultKeepAlive sets the default maximum time to keep alive a tcp connection
-	// during no-use. It is used by net.Dialer.
-	DefaultKeepAlive = 3 * time.Minute
-
-	// DefaultReconnectBufferSize sets the size of the buffer during reconnection.
-	DefaultReconnectBufferSize = 1024 * 1024 * 8
 )
 
 // ConnectOptions defines a function type used to apply given
@@ -49,27 +39,19 @@ func SecureConnection() ConnectOptions {
 	}
 }
 
-// ClientWriteInterval sets the clientNetwork to use the provided value
+// WriteInterval sets the clientNetwork to use the provided value
 // as its write intervals for colasced/batch writing of send data.
-func ClientWriteInterval(dur time.Duration) ConnectOptions {
+func WriteInterval(dur time.Duration) ConnectOptions {
 	return func(cm *clientNetwork) {
 		cm.clientMaxWriteDeadline = dur
 	}
 }
 
-// ClientMaxBuffer sets the clientNetwork to use the provided value
+// MaxBuffer sets the clientNetwork to use the provided value
 // as its maximum buffer size for it's writer.
-func ClientMaxBuffer(buffer int) ConnectOptions {
+func MaxBuffer(buffer int) ConnectOptions {
 	return func(cm *clientNetwork) {
 		cm.clientMaxWriteSize = buffer
-	}
-}
-
-// ClientSizeWriterBuffer sets the clientNetwork to use the provided value
-// as its initial buffer size for it's writer.
-func ClientSizeWriterBuffer(buffer int) ConnectOptions {
-	return func(cm *clientNetwork) {
-		cm.clientMaxSizeWriteBuffer = buffer
 	}
 }
 
@@ -124,7 +106,7 @@ func Connect(addr string, ops ...ConnectOptions) (mnet.Client, error) {
 
 	c.NID = network.nid
 
-	network.totalreconnects = -1
+	network.totalReconnects = -1
 	if network.tls != nil && !network.tls.InsecureSkipVerify {
 		network.tls.ServerName = host
 	}
@@ -141,16 +123,8 @@ func Connect(addr string, ops ...ConnectOptions) (mnet.Client, error) {
 		network.keepAliveTimeout = DefaultKeepAlive
 	}
 
-	if network.clientMaxSizeWriteBuffer <= 0 {
-		network.clientMaxSizeWriteBuffer = ClientMaxCollectBufferSize
-	}
-
 	if network.clientMaxWriteDeadline <= 0 {
 		network.clientMaxWriteDeadline = ClientWriteNetConnDeadline
-	}
-
-	if network.clientMaxWriteSize <= 0 {
-		network.clientMaxWriteSize = ClientMaxNetConnWriteBuffer
 	}
 
 	if network.dialer == nil {
@@ -162,10 +136,9 @@ func Connect(addr string, ops ...ConnectOptions) (mnet.Client, error) {
 
 	network.id = c.ID
 	network.addr = addr
-	network.parser = mnet.NewSizedMessageParser()
+	network.parser = new(tagMessages)
 	network.scratch = bytes.NewBuffer(make([]byte, 0, DefaultReconnectBufferSize))
-	network.buffWriter = mnet.NewBufferedIntervalWriter(network.scratch, network.clientMaxWriteSize, network.clientMaxWriteDeadline)
-	network.bw = mnet.NewSizeAppenBuffereddWriter(network.buffWriter, network.clientMaxSizeWriteBuffer)
+	network.buffWriter = bufio.NewWriterSize(network.scratch, network.clientMaxWriteSize)
 
 	c.Metrics = network.metrics
 	c.LiveFunc = network.isLive
@@ -186,47 +159,53 @@ func Connect(addr string, ops ...ConnectOptions) (mnet.Client, error) {
 }
 
 type clientNetwork struct {
-	totalReadIn              int64
-	totalWriteOut            int64
-	totalWriteFlush          int64
-	totalInBuff              int64
-	totalreconnects          int64
-	totalbadreconnects       int64
-	totalInCBuff             int64
-	dialTimeout              time.Duration
-	keepAliveTimeout         time.Duration
-	clientMaxWriteSize       int
-	clientMaxSizeWriteBuffer int
-	secure                   bool
-	id                       string
-	nid                      string
-	addr                     string
-	localAddr                net.Addr
-	remoteAddr               net.Addr
-	do                       sync.Once
-	tls                      *tls.Config
-	clientMaxWriteDeadline   time.Duration
-	worker                   sync.WaitGroup
-	metrics                  metrics.Metrics
-	scratch                  *bytes.Buffer
-	dialer                   *net.Dialer
-	parser                   *mnet.SizedMessageParser
-	buffWriter               *mnet.BufferedIntervalWriter
-	bw                       *mnet.SizeAppendBufferredWriter
-	cu                       sync.RWMutex
-	conn                     net.Conn
-	clientErr                error
+	totalRead       int64
+	totalWritten    int64
+	totalFlushed    int64
+	MessageRead     int64
+	MessageWritten  int64
+	totalReconnects int64
+	totalMisses     int64
+
+	dialTimeout      time.Duration
+	keepAliveTimeout time.Duration
+
+	clientMaxWriteSize     int
+	clientMaxWriteDeadline time.Duration
+
+	parser     *tagMessages
+	scratch    *bytes.Buffer
+	bu         sync.Mutex
+	buffWriter *bufio.Writer
+
+	secure     bool
+	id         string
+	nid        string
+	addr       string
+	localAddr  net.Addr
+	remoteAddr net.Addr
+	do         sync.Once
+	tls        *tls.Config
+	worker     sync.WaitGroup
+	metrics    metrics.Metrics
+	dialer     *net.Dialer
+
+	cu        sync.RWMutex
+	conn      net.Conn
+	clientErr error
 }
 
-func (cn *clientNetwork) getStatistics(cm mnet.Client) (mnet.Statistics, error) {
-	var stats mnet.Statistics
-	stats.TotalReadInBytes = atomic.LoadInt64(&cn.totalReadIn)
-	stats.TotalFlushedInBytes = atomic.LoadInt64(&cn.totalWriteFlush)
-	stats.TotalWrittenInBytes = atomic.LoadInt64(&cn.totalWriteOut)
-	stats.TotalBytesInBuffer = atomic.LoadInt64(&cn.totalInBuff)
-	stats.TotalReconnects = atomic.LoadInt64(&cn.totalreconnects)
-	stats.TotalFailedReconnects = atomic.LoadInt64(&cn.totalbadreconnects)
-	stats.TotalBytesInCollectBuffer = atomic.LoadInt64(&cn.totalInCBuff)
+func (cn *clientNetwork) getStatistics(cm mnet.Client) (mnet.ClientStatistic, error) {
+	var stats mnet.ClientStatistic
+	stats.ID = cn.id
+	stats.Local = cn.localAddr
+	stats.Remote = cn.remoteAddr
+	stats.BytesRead = atomic.LoadInt64(&cn.totalRead)
+	stats.MessagesRead = atomic.LoadInt64(&cn.MessageRead)
+	stats.BytesWritten = atomic.LoadInt64(&cn.totalWritten)
+	stats.BytesFlushed = atomic.LoadInt64(&cn.totalFlushed)
+	stats.MessagesWritten = atomic.LoadInt64(&cn.MessageWritten)
+	stats.Reconnects = atomic.LoadInt64(&cn.totalReconnects)
 	return stats, nil
 }
 
@@ -253,7 +232,7 @@ func (cn *clientNetwork) getLocalAddr(cm mnet.Client) (net.Addr, error) {
 	return cn.localAddr, nil
 }
 
-func (cn *clientNetwork) flush(cm mnet.Client, directWrite bool) error {
+func (cn *clientNetwork) flush(cm mnet.Client) error {
 	cn.cu.RLock()
 	if cn.clientErr != nil {
 		cn.cu.RUnlock()
@@ -261,47 +240,74 @@ func (cn *clientNetwork) flush(cm mnet.Client, directWrite bool) error {
 	}
 	cn.cu.RUnlock()
 
-	atomic.StoreInt64(&cn.totalWriteFlush, int64(cn.bw.TotalFlushed()))
-	atomic.StoreInt64(&cn.totalInCBuff, int64(cn.bw.LengthInBuffer()))
-	atomic.StoreInt64(&cn.totalInBuff, int64(cn.buffWriter.Buffered()))
-	err := cn.bw.Flush()
-	if err != nil && err != io.ErrShortWrite {
+	cn.bu.Lock()
+	defer cn.bu.Unlock()
+	if cn.buffWriter == nil {
+		return mnet.ErrAlreadyClosed
+	}
+
+	available := cn.buffWriter.Buffered()
+	atomic.StoreInt64(&cn.totalFlushed, int64(available))
+
+	err := cn.buffWriter.Flush()
+	if err != nil {
 		cn.metrics.Emit(
 			metrics.Error(err),
 			metrics.WithID(cn.id),
 			metrics.With("network", cn.nid),
 			metrics.Message("clientNetwork.flush"),
 		)
-		cn.close(cm)
-	}
-
-	if directWrite {
-		return cn.buffWriter.Flush()
+		return err
 	}
 
 	return err
 }
 
-func (cn *clientNetwork) write(cm mnet.Client, d []byte) (int, error) {
+func (cn *clientNetwork) write(cm mnet.Client, inSize int) (io.WriteCloser, error) {
 	cn.cu.RLock()
 	if cn.clientErr != nil {
 		cn.cu.RUnlock()
-		return 0, cn.clientErr
+		return nil, cn.clientErr
 	}
 	cn.cu.RUnlock()
 
-	n, err := cn.bw.Write(d)
-	atomic.AddInt64(&cn.totalWriteOut, int64(n))
-	if err != nil && err != io.ErrShortWrite {
-		cn.metrics.Emit(
-			metrics.Error(err),
-			metrics.WithID(cn.id),
-			metrics.With("network", cn.nid),
-			metrics.Message("clientNetwork.flush"),
-		)
-		cn.close(cm)
-	}
-	return n, err
+	return bufferPool.Get(inSize, func(incoming int, w io.WriterTo) error {
+		atomic.AddInt64(&cn.MessageWritten, 1)
+		atomic.AddInt64(&cn.totalWritten, int64(incoming))
+
+		cn.bu.Lock()
+		defer cn.bu.Unlock()
+
+		if cn.buffWriter == nil {
+			return mnet.ErrAlreadyClosed
+		}
+
+		buffered := cn.buffWriter.Buffered()
+		atomic.AddInt64(&cn.totalFlushed, int64(buffered))
+
+		available := cn.buffWriter.Available()
+
+		// size of next write.
+		toWrite := available + incoming
+
+		// add size header
+		toWrite += 4
+
+		if toWrite >= cn.clientMaxWriteSize {
+			if err := cn.buffWriter.Flush(); err != nil {
+				return err
+			}
+		}
+
+		// write length header first.
+		header := make([]byte, headerLength)
+		binary.BigEndian.PutUint32(header, uint32(incoming))
+		cn.buffWriter.Write(header)
+
+		// then flush data alongside header.
+		_, err := w.WriteTo(cn.buffWriter)
+		return err
+	}), nil
 }
 
 func (cn *clientNetwork) read(cm mnet.Client) ([]byte, error) {
@@ -315,11 +321,10 @@ func (cn *clientNetwork) read(cm mnet.Client) ([]byte, error) {
 }
 
 func (cn *clientNetwork) readLoop(cm mnet.Client, conn net.Conn) {
-	// defer cn.close(cm)
+	defer cn.close(cm)
 	defer cn.worker.Done()
 
 	incoming := make([]byte, MinBufferSize, MaxBufferSize)
-
 	for {
 		n, err := conn.Read(incoming)
 		if err != nil {
@@ -329,7 +334,7 @@ func (cn *clientNetwork) readLoop(cm mnet.Client, conn net.Conn) {
 				metrics.With("network", cn.nid),
 				metrics.Message("Connection failed to read: closing"),
 			)
-			break
+			return
 		}
 
 		// if nothing was read, skip.
@@ -337,10 +342,12 @@ func (cn *clientNetwork) readLoop(cm mnet.Client, conn net.Conn) {
 			continue
 		}
 
-		// Send into go-routine (critical path)?
-		cn.parser.Parse(incoming[:n])
+		// if we fail to parse the data then we error out.
+		if err := cn.parser.Parse(incoming[:n]); err != nil {
+			return
+		}
 
-		atomic.AddInt64(&cn.totalReadIn, int64(n))
+		atomic.AddInt64(&cn.totalRead, int64(n))
 
 		// Lets shrink buffer abit within area.
 		if n == len(incoming) && n < MaxBufferSize {
@@ -377,8 +384,6 @@ func (cn *clientNetwork) close(cm mnet.Client) error {
 	cn.cu.Unlock()
 
 	cn.do.Do(func() {
-		cn.buffWriter.StopTimer()
-
 		conn.SetWriteDeadline(time.Now().Add(MaxFlushDeadline))
 		cn.buffWriter.Flush()
 		conn.SetWriteDeadline(time.Time{})
@@ -405,7 +410,7 @@ func (cn *clientNetwork) reconnect(cm mnet.Client, altAddr string) error {
 	}
 	cn.cu.RUnlock()
 
-	atomic.AddInt64(&cn.totalreconnects, 1)
+	atomic.AddInt64(&cn.totalReconnects, 1)
 
 	// ensure we really have stopped loop.
 	cn.worker.Wait()
@@ -426,7 +431,7 @@ func (cn *clientNetwork) reconnect(cm mnet.Client, altAddr string) error {
 
 	// If failure was met, then return error and go-offline again.
 	if err != nil {
-		atomic.AddInt64(&cn.totalbadreconnects, 1)
+		atomic.AddInt64(&cn.totalReconnects, 1)
 		return err
 	}
 
@@ -439,8 +444,7 @@ func (cn *clientNetwork) reconnect(cm mnet.Client, altAddr string) error {
 	// writer. But if error in write occurs like short write, then set back scratch as buff's
 	// writer, write back data which was not written then return error.
 	if cn.scratch.Len() != 0 {
-		_, werr := cn.scratch.WriteTo(conn)
-		if werr != nil && werr != io.ErrShortWrite {
+		if _, werr := cn.scratch.WriteTo(conn); werr != nil {
 			cn.buffWriter.Reset(cn.scratch)
 			return werr
 		}

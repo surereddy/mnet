@@ -4,7 +4,8 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/influx6/faux/context"
+	"context"
+
 	"github.com/influx6/faux/tests"
 	"github.com/influx6/mnet"
 	"github.com/influx6/mnet/mtcp"
@@ -13,7 +14,7 @@ import (
 func TestNonTLSNetworkWithClient(t *testing.T) {
 	initMetrics()
 
-	ctx := context.New()
+	ctx, cancel := context.WithCancel(context.Background())
 	netw, err := createNewNetwork(ctx, "localhost:4050", nil)
 	if err != nil {
 		tests.FailedWithError(err, "Should have successfully create network")
@@ -27,12 +28,19 @@ func TestNonTLSNetworkWithClient(t *testing.T) {
 	tests.Passed("Should have successfully connected to network")
 
 	payload := []byte("pub help")
-	if _, err := client.Write(payload); err != nil {
+	cw, err := client.Write(len(payload))
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully created new writer")
+	}
+	tests.Passed("Should have successfully created new writer")
+
+	cw.Write(payload)
+	if err := cw.Close(); err != nil {
 		tests.FailedWithError(err, "Should have successfully written payload to client")
 	}
 	tests.Passed("Should have successfully written payload to client")
 
-	if ferr := client.Flush(false); ferr != nil {
+	if ferr := client.Flush(); ferr != nil {
 		tests.FailedWithError(ferr, "Should have successfully flush data to network")
 	}
 	tests.Passed("Should have successfully flush data to network")
@@ -66,7 +74,7 @@ func TestNonTLSNetworkWithClient(t *testing.T) {
 	}
 	tests.Passed("Should have successfully closed client connection")
 
-	ctx.Cancel()
+	cancel()
 	netw.Wait()
 }
 
@@ -91,7 +99,7 @@ func TestTLSNetworkWithClient(t *testing.T) {
 	}
 	tests.Passed("Should have successfully create sever's tls config")
 
-	ctx := context.New()
+	ctx, cancel := context.WithCancel(context.Background())
 	netw, err := createNewNetwork(ctx, "localhost:4050", serverTls)
 	if err != nil {
 		tests.FailedWithError(err, "Should have successfully create network")
@@ -105,12 +113,19 @@ func TestTLSNetworkWithClient(t *testing.T) {
 	tests.Passed("Should have successfully connected to network")
 
 	payload := []byte("pub help")
-	if _, err := client.Write(payload); err != nil {
+	cw, err := client.Write(len(payload))
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully created new writer")
+	}
+	tests.Passed("Should have successfully created new writer")
+
+	cw.Write(payload)
+	if err := cw.Close(); err != nil {
 		tests.FailedWithError(err, "Should have successfully written payload to client")
 	}
 	tests.Passed("Should have successfully written payload to client")
 
-	if ferr := client.Flush(false); ferr != nil {
+	if ferr := client.Flush(); ferr != nil {
 		tests.FailedWithError(ferr, "Should have successfully flush data to network")
 	}
 	tests.Passed("Should have successfully flush data to network")
@@ -144,6 +159,6 @@ func TestTLSNetworkWithClient(t *testing.T) {
 	}
 	tests.Passed("Should have successfully closed client connection")
 
-	ctx.Cancel()
+	cancel()
 	netw.Wait()
 }

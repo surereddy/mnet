@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"sync/atomic"
+
 	"github.com/influx6/faux/netutils"
 	"github.com/influx6/melon"
 )
@@ -101,11 +103,11 @@ func (cs *connReadWriter) ReadConn() (net.Conn, error) {
 		tlsConn = tls.Server(newConn, cs.tls)
 	}
 
-	var tlsHandshaked bool
+	var tlsHandshaked int64
 
 	// If we pass over this time and we have not being sorted then kill connection.
 	time.AfterFunc(MaxTLSHandshakeTTLWait, func() {
-		if !tlsHandshaked {
+		if atomic.LoadInt64(&tlsHandshaked) != 1 {
 			tlsConn.SetReadDeadline(time.Time{})
 			tlsConn.Close()
 		}
@@ -113,12 +115,12 @@ func (cs *connReadWriter) ReadConn() (net.Conn, error) {
 
 	tlsConn.SetReadDeadline(time.Now().Add(TLSHandshakeTTL))
 	if err := tlsConn.Handshake(); err != nil {
-		tlsHandshaked = true
+		atomic.StoreInt64(&tlsHandshaked, 1)
 		tlsConn.Close()
 		return nil, err
 	}
 
-	tlsHandshaked = true
+	atomic.StoreInt64(&tlsHandshaked, 1)
 	tlsConn.SetReadDeadline(time.Time{})
 
 	return tlsConn, nil
