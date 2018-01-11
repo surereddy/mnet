@@ -2,6 +2,26 @@ MTCP
 -------
 MTCP implements a network server and client library for the `mnet` package to provide superfast reads and writes.
 
+## Benchmarks
+
+Below are recently runned benchmarks, see [BenchmarkTests](./benchmark.txt) for older runs.
+
+```bash
+BenchmarkNoBytesMessages-4    	30000000	        40.5 ns/op	 148.28 MB/s	       0 B/op	       0 allocs/op
+Benchmark2BytesMessages-4     	30000000	        41.4 ns/op	 193.24 MB/s	       0 B/op	       0 allocs/op
+Benchmark4BytesMessages-4     	30000000	        40.6 ns/op	 246.18 MB/s	       0 B/op	       0 allocs/op
+Benchmark8BytesMessages-4     	30000000	        41.2 ns/op	 340.04 MB/s	       0 B/op	       0 allocs/op
+Benchmark16BytesMessages-4    	50000000	        40.8 ns/op	 539.56 MB/s	       0 B/op	       0 allocs/op
+Benchmark32BytesMessages-4    	30000000	        41.8 ns/op	 909.35 MB/s	       0 B/op	       0 allocs/op
+Benchmark64BytesMessages-4    	30000000	        40.6 ns/op	1725.10 MB/s	       0 B/op	       0 allocs/op
+Benchmark128BytesMessages-4   	50000000	        40.9 ns/op	3273.82 MB/s	       0 B/op	       0 allocs/op
+Benchmark256BytesMessages-4   	30000000	        40.5 ns/op	6474.85 MB/s	       0 B/op	       0 allocs/op
+Benchmark1KMessages-4         	50000000	        41.1 ns/op	25060.10 MB/s	       0 B/op	       0 allocs/op
+Benchmark4KMessages-4         	30000000	        42.0 ns/op	97627.75 MB/s	       0 B/op	       0 allocs/op
+Benchmark8KMessages-4         	30000000	        41.3 ns/op	198691.27 MB/s	       0 B/op	       0 allocs/op
+
+```
+
 ## Examples
 
 - MTCP Server
