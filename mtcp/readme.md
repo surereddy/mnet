@@ -2,14 +2,6 @@ MTCP
 -------
 MTCP implements a network server and client library for the `mnet` package to provide superfast reads and writes.
 
-## Restrictions
-Since `MTCP` expects data to be read or written to be in a format of `[DATASIZE][DATA]`, it is required that the user provides all writes within such a format, has the client and the server will 
-processed this. This is the case to allow colasing multiple writes into a single write where each 
-has a size header that can be read of to know it's individual message length.
-
-*`MNet` provides the `SizeAppendWriter` built into the server and client connections which will append appropriate size header within unto provided data. Note, that such writers do have max sizes and must be aware of when using to collect data, has they do push once size is beyond max. This is configurable
-
-
 ## Examples
 
 - MTCP Server
@@ -49,8 +41,19 @@ if err != nil {
     return
 }
 
-client.Write([]byte("pub help"))
-client.Flush()
+// create writer by telling client size of data
+// to be written.
+writer, err := client.Write(10)
+if err != nil {
+    log.Fatalf(err)
+    return
+}
+
+writer.Write([]byte("pub help"))
+if err := writer.Close(); err != nil {
+    log.Fatalf(err)
+    return
+}
 
 if _, err := client.Flush(); err != nil {
     log.Fatalf(err)

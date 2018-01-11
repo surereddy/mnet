@@ -1,8 +1,6 @@
 goos: darwin
 goarch: amd64
 pkg: github.com/influx6/mnet/mtcp
-BenchmarkNonTLSNetworkWriteWithClient-4    	30000000	        52.8 ns/op	 151.41 MB/s	       0 B/op	       0 allocs/op
-BenchmarkNonTLSNetworkWriteWithNetConn-4   	  200000	      8812 ns/op	   0.91 MB/s	      72 B/op	       2 allocs/op
 BenchmarkNoBytesMessages-4                 	30000000	        50.1 ns/op	  79.87 MB/s	       0 B/op	       0 allocs/op
 Benchmark2BytesMessages-4                  	30000000	        54.5 ns/op	 110.06 MB/s	       0 B/op	       0 allocs/op
 Benchmark8BytesMessages-4                  	30000000	        62.5 ns/op	 191.90 MB/s	       0 B/op	       0 allocs/op
@@ -20,8 +18,6 @@ Time: 11:33AM, 11th, Jan, 2018
 goos: darwin
 goarch: amd64
 pkg: github.com/influx6/mnet/mtcp
-BenchmarkNonTLSNetworkWriteWithNetConn-4   	200000000	         8.14 ns/op	1473.91 MB/s
-BenchmarkNonTLSNetworkWriteWithClient-4    	30000000	        50.3 ns/op	 159.16 MB/s
 BenchmarkNoBytesMessages-4                 	  100000	     13263 ns/op	   0.30 MB/s
 Benchmark2BytesMessages-4                  	30000000	        43.3 ns/op	 138.57 MB/s
 Benchmark4BytesMessages-4                  	30000000	        42.2 ns/op	 189.80 MB/s
@@ -36,3 +32,40 @@ Benchmark4KMessages-4                      	30000000	        42.3 ns/op	96964.95
 Benchmark8KMessages-4                      	30000000	        42.2 ns/op	194151.16 MB/s
 PASS
 ok  	github.com/influx6/mnet/mtcp	29.533s
+
+Time: 4:56, 11th, Jan, 2018
+goos: darwin
+goarch: amd64
+pkg: github.com/influx6/mnet/mtcp
+BenchmarkNoBytesMessages-4                 	 2000000	      1120 ns/op	   3.57 MB/s	     156 B/op	       3 allocs/op
+Benchmark2BytesMessages-4                  	30000000	        40.7 ns/op	 147.32 MB/s	       0 B/op	       0 allocs/op
+Benchmark4BytesMessages-4                  	50000000	        40.6 ns/op	 196.84 MB/s	       0 B/op	       0 allocs/op
+Benchmark8BytesMessages-4                  	 1000000	      1021 ns/op	  11.75 MB/s	     140 B/op	       3 allocs/op
+Benchmark16BytesMessages-4                 	30000000	        40.3 ns/op	 496.04 MB/s	       0 B/op	       0 allocs/op
+Benchmark32BytesMessages-4                 	30000000	        40.8 ns/op	 882.66 MB/s	       0 B/op	       0 allocs/op
+Benchmark64BytesMessages-4                 	50000000	        41.2 ns/op	1650.14 MB/s	       0 B/op	       0 allocs/op
+Benchmark128BytesMessages-4                	50000000	        41.4 ns/op	3190.30 MB/s	       0 B/op	       0 allocs/op
+Benchmark256BytesMessages-4                	50000000	        40.6 ns/op	6410.09 MB/s	       0 B/op	       0 allocs/op
+Benchmark1KMessages-4                      	30000000	        41.5 ns/op	24794.81 MB/s	       0 B/op	       0 allocs/op
+Benchmark4KMessages-4                      	30000000	        40.5 ns/op	101223.58 MB/s	       0 B/op	       0 allocs/op
+Benchmark8KMessages-4                      	30000000	        40.7 ns/op	201450.82 MB/s	       0 B/op	       0 allocs/op
+PASS
+
+Time: 5:00, 11th, Jan, 2018
+goos: darwin
+goarch: amd64
+pkg: github.com/influx6/mnet/mtcp
+BenchmarkNoBytesMessages-4                 	30000000	        41.4 ns/op	 120.80 MB/s	       0 B/op	       0 allocs/op
+Benchmark2BytesMessages-4                  	30000000	        40.6 ns/op	 172.46 MB/s	       0 B/op	       0 allocs/op
+Benchmark4BytesMessages-4                  	30000000	        40.9 ns/op	 220.14 MB/s	       0 B/op	       0 allocs/op
+Benchmark8BytesMessages-4                  	30000000	        40.3 ns/op	 322.33 MB/s	       0 B/op	       0 allocs/op
+Benchmark16BytesMessages-4                 	30000000	        41.8 ns/op	 501.94 MB/s	       0 B/op	       0 allocs/op
+Benchmark32BytesMessages-4                 	50000000	        40.8 ns/op	 906.42 MB/s	       0 B/op	       0 allocs/op
+Benchmark64BytesMessages-4                 	30000000	        46.0 ns/op	1500.19 MB/s	       0 B/op	       0 allocs/op
+Benchmark128BytesMessages-4                	30000000	        49.6 ns/op	2683.41 MB/s	       0 B/op	       0 allocs/op
+Benchmark256BytesMessages-4                	30000000	        42.7 ns/op	6110.79 MB/s	       0 B/op	       0 allocs/op
+Benchmark1KMessages-4                      	30000000	        41.9 ns/op	24538.97 MB/s	       0 B/op	       0 allocs/op
+Benchmark4KMessages-4                      	50000000	        41.5 ns/op	98808.60 MB/s	       0 B/op	       0 allocs/op
+Benchmark8KMessages-4                      	50000000	        40.8 ns/op	200838.23 MB/s	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/influx6/mnet/mtcp	34.604s

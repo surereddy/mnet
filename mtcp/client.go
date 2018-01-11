@@ -124,7 +124,7 @@ func Connect(addr string, ops ...ConnectOptions) (mnet.Client, error) {
 	}
 
 	if network.clientMaxWriteSize <= 0 {
-		network.clientMaxWriteDeadline = MaxBufferSize
+		network.clientMaxWriteSize = MaxBufferSize
 	}
 
 	if network.clientMaxWriteDeadline <= 0 {
@@ -286,16 +286,15 @@ func (cn *clientNetwork) write(cm mnet.Client, inSize int) (io.WriteCloser, erro
 			return mnet.ErrAlreadyClosed
 		}
 
+		//available := cn.buffWriter.Available()
 		buffered := cn.buffWriter.Buffered()
 		atomic.AddInt64(&cn.totalFlushed, int64(buffered))
 
-		available := cn.buffWriter.Available()
-
 		// size of next write.
-		toWrite := available + incoming
+		toWrite := buffered + incoming
 
 		// add size header
-		toWrite += 4
+		toWrite += headerLength
 
 		if toWrite >= cn.clientMaxWriteSize {
 			if err := cn.buffWriter.Flush(); err != nil {

@@ -118,13 +118,14 @@ func (nc *networkConn) write(cm mnet.Client, inSize int) (io.WriteCloser, error)
 		buffered := nc.buffWriter.Buffered()
 		atomic.AddInt64(&nc.totalFlushOut, int64(buffered))
 
-		available := nc.buffWriter.Available()
+		//available := nc.buffWriter.Available()
 
 		// size of next write.
-		toWrite := available + incoming
+		toWrite := buffered + incoming
 
 		// add size header
-		toWrite += 4
+		toWrite += headerLength
+
 		if toWrite >= nc.network.ClientMaxWriteSize {
 			if err := nc.buffWriter.Flush(); err != nil {
 				return err
