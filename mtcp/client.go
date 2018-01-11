@@ -128,7 +128,7 @@ func Connect(addr string, ops ...ConnectOptions) (mnet.Client, error) {
 	}
 
 	if network.clientMaxWriteDeadline <= 0 {
-		network.clientMaxWriteDeadline = ClientWriteNetConnDeadline
+		network.clientMaxWriteDeadline = MaxFlushDeadline
 	}
 
 	if network.dialer == nil {
@@ -237,12 +237,19 @@ func (cn *clientNetwork) getLocalAddr(cm mnet.Client) (net.Addr, error) {
 }
 
 func (cn *clientNetwork) flush(cm mnet.Client) error {
+	var conn net.Conn
 	cn.cu.RLock()
 	if cn.clientErr != nil {
 		cn.cu.RUnlock()
 		return cn.clientErr
 	}
+
+	conn = cn.conn
 	cn.cu.RUnlock()
+
+	if conn == nil {
+		return mnet.ErrAlreadyClosed
+	}
 
 	cn.bu.Lock()
 	defer cn.bu.Unlock()
@@ -253,8 +260,10 @@ func (cn *clientNetwork) flush(cm mnet.Client) error {
 	available := cn.buffWriter.Buffered()
 	atomic.StoreInt64(&cn.totalFlushed, int64(available))
 
+	conn.SetWriteDeadline(time.Now().Add(cn.clientMaxWriteDeadline))
 	err := cn.buffWriter.Flush()
 	if err != nil {
+		conn.SetWriteDeadline(time.Time{})
 		cn.metrics.Emit(
 			metrics.Error(err),
 			metrics.WithID(cn.id),
@@ -263,19 +272,31 @@ func (cn *clientNetwork) flush(cm mnet.Client) error {
 		)
 		return err
 	}
+	conn.SetWriteDeadline(time.Time{})
 
 	return err
 }
 
 func (cn *clientNetwork) write(cm mnet.Client, inSize int) (io.WriteCloser, error) {
+	var conn net.Conn
+
 	cn.cu.RLock()
 	if cn.clientErr != nil {
 		cn.cu.RUnlock()
 		return nil, cn.clientErr
 	}
+	conn = cn.conn
 	cn.cu.RUnlock()
 
+	if conn == nil {
+		return nil, mnet.ErrAlreadyClosed
+	}
+
 	return bufferPool.Get(inSize, func(incoming int, w io.WriterTo) error {
+		if conn == nil {
+			return mnet.ErrAlreadyClosed
+		}
+
 		atomic.AddInt64(&cn.MessageWritten, 1)
 		atomic.AddInt64(&cn.totalWritten, int64(incoming))
 
@@ -297,9 +318,12 @@ func (cn *clientNetwork) write(cm mnet.Client, inSize int) (io.WriteCloser, erro
 		toWrite += headerLength
 
 		if toWrite >= cn.clientMaxWriteSize {
+			conn.SetWriteDeadline(time.Now().Add(cn.clientMaxWriteDeadline))
 			if err := cn.buffWriter.Flush(); err != nil {
+				conn.SetWriteDeadline(time.Time{})
 				return err
 			}
+			conn.SetWriteDeadline(time.Time{})
 		}
 
 		// write length header first.

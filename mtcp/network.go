@@ -369,7 +369,7 @@ func (n *Network) Start(ctx context.Context) error {
 	}
 
 	if n.ClientMaxWriteDeadline <= 0 {
-		n.ClientMaxWriteDeadline = ClientWriteNetConnDeadline
+		n.ClientMaxWriteDeadline = MaxFlushDeadline
 	}
 
 	n.routines.Add(2)

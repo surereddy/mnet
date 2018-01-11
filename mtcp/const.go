@@ -12,7 +12,7 @@ const (
 	MaxTemporarySleep = 1 * time.Second
 
 	// MaxFlushDeadline sets the maximum, allowed duration for flushing data
-	MaxFlushDeadline = 2 * time.Second
+	MaxFlushDeadline = 3 * time.Second
 
 	// MinBufferSize sets the initial size of space of the slice
 	// used to read in content from a net.Conn in the connections
@@ -22,12 +22,6 @@ const (
 	// MaxBufferSize sets the maximum size allowed for all reads
 	// used in the readloop of a client's net.Conn.
 	MaxBufferSize = 69560
-
-	// ClientWriteNetConnDeadline sets the maximum time to await a call to Client.Flush
-	// which will reset the writer to collect more data before writing. This helps
-	// to both buffer writting data and minimize calls to net.Conn.Write and improve
-	// performance.
-	ClientWriteNetConnDeadline = 60 * time.Millisecond
 
 	// DefaultDialTimeout sets the default maximum time in seconds allowed before
 	// a net.Dialer exits attempt to dial a network.
