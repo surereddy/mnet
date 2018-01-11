@@ -1,6 +1,6 @@
 MTCP
 -------
-MTCP implements a network server and client library for the `mnet` package to provide superfast reads and writes.
+MTCP implements a tcp network server and client library for the `mnet` package to provide superfast reads and writes.
 
 ## Benchmarks
 
@@ -25,7 +25,7 @@ Benchmark8KMessages-4         	30000000	        41.3 ns/op	198691.27 MB/s	      
 ## Examples
 
 - MTCP Server
-`mtcp.Network` provides a tcp network server which readily receives connections and data within `[Size Header][Data]` format. It can be created as below:
+`mtcp.Network` provides a tcp network server which readily through a handler function allows handling incoming client connections, as below: 
 
 ```go
 var netw mtcp.Network
@@ -52,7 +52,7 @@ netw.Handler = func(client mnet.Client) error {
 ```
 
 - Client
-`mtcp.Connect` provides a tcp client which connects to a `mtcp.Network` which readily receives data within `[Size Header][Data]` format and expects written data to follow such format as well. It can be created as below:
+`mtcp.Connect` provides a tcp client which connects to a `mtcp.Network` server, ready to allow user's communication at blazing speeds.
 
 ```go
 client, err := mtcp.Connect("localhost:4050")

@@ -22,14 +22,22 @@ See [MTCP](./mtcp) for more.
 
 ### UDP
 
-Mnet current has no implementation but is planned.
+Mnet provides the [mudp](./mudp) package which implements a lightweight udp server and client implementations with blazing fast data transfers by combining minimal data copy with data buffering techniques. 
+
+Mudp like all Mnet packages are foundation, in that they lay the necessary foundation to transfer at blazing speed without being too opinionated on how you build on top.
 
 ### Websockets
 
-Mnet current has no implementation but is planned.
+Mnet provides the [msocks](./msocks) package which implements a lightweight websocket server and client implementations with blazing fast data transfers by combining minimal data copy with data buffering techniques. 
 
+Mudp like all Mnet packages are foundation, in that they lay the necessary foundation to transfer at blazing speed without being too opinionated on how you build on top.
 
 
 ## Contributions
 
-Contributors are welcome to file issue tickets and provide PRs in accordance to the following [Guidelines](./contrib.md)
+1. Fork this repository to your own GitHub account and then clone it to your local device
+2. Make your changes with clear git commit messages.
+3. Create a PR request with detail reason for change.
+
+Do reach out anything, if PR takes time for review. :)
+
