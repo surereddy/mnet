@@ -15,12 +15,12 @@ import (
 )
 
 var (
-	defaultClientSize = 30500
-	defaultNetConn    = 30500
+	defaultClientSize = 40500
 )
 
 func BenchmarkNonTLSNetworkWriteWithNetConn(b *testing.B) {
 	b.StopTimer()
+	b.ReportAllocs()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	netw, err := createBenchmarkNetwork(ctx, "localhost:5050", nil)
@@ -36,7 +36,7 @@ func BenchmarkNonTLSNetworkWriteWithNetConn(b *testing.B) {
 	}
 
 	payload := makeMessage([]byte("pub help"))
-	bw := bufio.NewWriterSize(conn, defaultNetConn)
+	bw := bufio.NewWriterSize(conn, defaultClientSize)
 
 	b.StartTimer()
 	b.SetBytes(int64(len(payload)))
@@ -50,8 +50,10 @@ func BenchmarkNonTLSNetworkWriteWithNetConn(b *testing.B) {
 	cancel()
 	netw.Wait()
 }
+
 func BenchmarkNonTLSNetworkWriteWithClient(b *testing.B) {
 	b.StopTimer()
+	b.ReportAllocs()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	netw, err := createBenchmarkNetwork(ctx, "localhost:5050", nil)
@@ -59,6 +61,8 @@ func BenchmarkNonTLSNetworkWriteWithClient(b *testing.B) {
 		b.Fatalf("Failed to create network: %+q", err)
 		return
 	}
+
+	netw.ClientMaxWriteSize = defaultClientSize
 
 	client, err := mtcp.Connect("localhost:5050", mtcp.Metrics(events), mtcp.MaxBuffer(defaultClientSize))
 	if err != nil {
@@ -86,7 +90,9 @@ func BenchmarkNonTLSNetworkWriteWithClient(b *testing.B) {
 
 func benchThis(b *testing.B, payload []byte) {
 	b.StopTimer()
+	b.ReportAllocs()
 
+	payloadLen := len(payload)
 	ctx, cancel := context.WithCancel(context.Background())
 	netw, err := createBenchmarkNetwork(ctx, "localhost:5050", nil)
 	if err != nil {
@@ -94,17 +100,19 @@ func benchThis(b *testing.B, payload []byte) {
 		return
 	}
 
+	netw.ClientMaxWriteSize = defaultClientSize
+
 	client, err := mtcp.Connect("localhost:5050", mtcp.Metrics(events), mtcp.MaxBuffer(defaultClientSize))
 	if err != nil {
 		b.Fatalf("Failed to dial network %+q", err)
 		return
 	}
 
-	b.SetBytes(int64(len(payload)))
+	b.SetBytes(int64(payloadLen))
 	b.StartTimer()
 
 	for i := 0; i < b.N; i++ {
-		if w, err := client.Write(len(payload)); err == nil {
+		if w, err := client.Write(payloadLen); err == nil {
 			w.Write(payload)
 			w.Close()
 		}
@@ -117,6 +125,7 @@ func benchThis(b *testing.B, payload []byte) {
 	cancel()
 	netw.Wait()
 }
+
 func BenchmarkNoBytesMessages(b *testing.B) {
 	b.StopTimer()
 	payload := sizedPayload(0)
@@ -126,6 +135,12 @@ func BenchmarkNoBytesMessages(b *testing.B) {
 func Benchmark2BytesMessages(b *testing.B) {
 	b.StopTimer()
 	payload := sizedPayload(2)
+	benchThis(b, payload)
+}
+
+func Benchmark4BytesMessages(b *testing.B) {
+	b.StopTimer()
+	payload := sizedPayload(4)
 	benchThis(b, payload)
 }
 
@@ -192,12 +207,16 @@ func sizedPayloadString(sz int) string {
 
 func sizedPayload(sz int) []byte {
 	payload := make([]byte, sz+len(pub))
-	copy(payload, pub)
-	copy(payload, sizedBytes(sz))
-	return payload
+	n := copy(payload, pub)
+	n += copy(payload[n:], sizedBytes(sz))
+	return payload[:n]
 }
 
 func sizedBytes(sz int) []byte {
+	if sz <= 0 {
+		return []byte("")
+	}
+
 	b := make([]byte, sz)
 	for i := range b {
 		b[i] = ch[rand.Intn(len(ch))]

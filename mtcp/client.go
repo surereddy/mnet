@@ -123,6 +123,10 @@ func Connect(addr string, ops ...ConnectOptions) (mnet.Client, error) {
 		network.keepAliveTimeout = DefaultKeepAlive
 	}
 
+	if network.clientMaxWriteSize <= 0 {
+		network.clientMaxWriteDeadline = MaxBufferSize
+	}
+
 	if network.clientMaxWriteDeadline <= 0 {
 		network.clientMaxWriteDeadline = ClientWriteNetConnDeadline
 	}

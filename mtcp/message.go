@@ -26,7 +26,7 @@ var (
 )
 
 var (
-	bufferPool  = done.NewDonePool(512, 10)
+	bufferPool  = done.NewDonePool(218, 20)
 	messagePool = sync.Pool{New: func() interface{} { return new(messageTomb) }}
 )
 
