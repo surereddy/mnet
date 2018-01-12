@@ -88,6 +88,12 @@ func Benchmark8KMessages(b *testing.B) {
 	benchThis(b, payload)
 }
 
+func Benchmark16KMessages(b *testing.B) {
+	b.StopTimer()
+	payload := sizedPayload(16 * 1024)
+	benchThis(b, payload)
+}
+
 func benchThis(b *testing.B, payload []byte) {
 	b.StopTimer()
 	b.ReportAllocs()

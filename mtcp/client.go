@@ -116,19 +116,19 @@ func Connect(addr string, ops ...ConnectOptions) (mnet.Client, error) {
 	}
 
 	if network.dialTimeout <= 0 {
-		network.dialTimeout = DefaultDialTimeout
+		network.dialTimeout = mnet.DefaultDialTimeout
 	}
 
 	if network.keepAliveTimeout <= 0 {
-		network.keepAliveTimeout = DefaultKeepAlive
+		network.keepAliveTimeout = mnet.DefaultKeepAlive
 	}
 
 	if network.clientMaxWriteSize <= 0 {
-		network.clientMaxWriteSize = MaxBufferSize
+		network.clientMaxWriteSize = mnet.MaxBufferSize
 	}
 
 	if network.clientMaxWriteDeadline <= 0 {
-		network.clientMaxWriteDeadline = MaxFlushDeadline
+		network.clientMaxWriteDeadline = mnet.MaxFlushDeadline
 	}
 
 	if network.dialer == nil {
@@ -140,8 +140,8 @@ func Connect(addr string, ops ...ConnectOptions) (mnet.Client, error) {
 
 	network.id = c.ID
 	network.addr = addr
-	network.parser = new(tagMessages)
-	network.scratch = bytes.NewBuffer(make([]byte, 0, DefaultReconnectBufferSize))
+	network.parser = new(mnet.TaggedMessages)
+	network.scratch = bytes.NewBuffer(make([]byte, 0, mnet.DefaultReconnectBufferSize))
 	network.buffWriter = bufio.NewWriterSize(network.scratch, network.clientMaxWriteSize)
 
 	c.Metrics = network.metrics
@@ -170,6 +170,7 @@ type clientNetwork struct {
 	MessageWritten  int64
 	totalReconnects int64
 	totalMisses     int64
+	closed          int64
 
 	dialTimeout      time.Duration
 	keepAliveTimeout time.Duration
@@ -177,7 +178,7 @@ type clientNetwork struct {
 	clientMaxWriteSize     int
 	clientMaxWriteDeadline time.Duration
 
-	parser     *tagMessages
+	parser     *mnet.TaggedMessages
 	scratch    *bytes.Buffer
 	bu         sync.Mutex
 	buffWriter *bufio.Writer
@@ -194,9 +195,8 @@ type clientNetwork struct {
 	metrics    metrics.Metrics
 	dialer     *net.Dialer
 
-	cu        sync.RWMutex
-	conn      net.Conn
-	clientErr error
+	cu   sync.RWMutex
+	conn net.Conn
 }
 
 func (cn *clientNetwork) getStatistics(cm mnet.Client) (mnet.ClientStatistic, error) {
@@ -215,12 +215,9 @@ func (cn *clientNetwork) getStatistics(cm mnet.Client) (mnet.ClientStatistic, er
 
 // isLive returns error if clientNetwork is not connected to remote network.
 func (cn *clientNetwork) isLive(cm mnet.Client) error {
-	cn.cu.RLock()
-	if cn.clientErr != nil {
-		cn.cu.RUnlock()
-		return cn.clientErr
+	if atomic.LoadInt64(&cn.closed) == 1 {
+		return mnet.ErrAlreadyClosed
 	}
-	cn.cu.RUnlock()
 	return nil
 }
 
@@ -237,13 +234,12 @@ func (cn *clientNetwork) getLocalAddr(cm mnet.Client) (net.Addr, error) {
 }
 
 func (cn *clientNetwork) flush(cm mnet.Client) error {
-	var conn net.Conn
-	cn.cu.RLock()
-	if cn.clientErr != nil {
-		cn.cu.RUnlock()
-		return cn.clientErr
+	if err := cn.isLive(cm); err != nil {
+		return err
 	}
 
+	var conn net.Conn
+	cn.cu.RLock()
 	conn = cn.conn
 	cn.cu.RUnlock()
 
@@ -278,13 +274,12 @@ func (cn *clientNetwork) flush(cm mnet.Client) error {
 }
 
 func (cn *clientNetwork) write(cm mnet.Client, inSize int) (io.WriteCloser, error) {
-	var conn net.Conn
-
-	cn.cu.RLock()
-	if cn.clientErr != nil {
-		cn.cu.RUnlock()
-		return nil, cn.clientErr
+	if err := cn.isLive(cm); err != nil {
+		return nil, err
 	}
+
+	var conn net.Conn
+	cn.cu.RLock()
 	conn = cn.conn
 	cn.cu.RUnlock()
 
@@ -315,7 +310,7 @@ func (cn *clientNetwork) write(cm mnet.Client, inSize int) (io.WriteCloser, erro
 		toWrite := buffered + incoming
 
 		// add size header
-		toWrite += headerLength
+		toWrite += mnet.HeaderLength
 
 		if toWrite >= cn.clientMaxWriteSize {
 			conn.SetWriteDeadline(time.Now().Add(cn.clientMaxWriteDeadline))
@@ -327,7 +322,7 @@ func (cn *clientNetwork) write(cm mnet.Client, inSize int) (io.WriteCloser, erro
 		}
 
 		// write length header first.
-		header := make([]byte, headerLength)
+		header := make([]byte, mnet.HeaderLength)
 		binary.BigEndian.PutUint32(header, uint32(incoming))
 		cn.buffWriter.Write(header)
 
@@ -338,20 +333,20 @@ func (cn *clientNetwork) write(cm mnet.Client, inSize int) (io.WriteCloser, erro
 }
 
 func (cn *clientNetwork) read(cm mnet.Client) ([]byte, error) {
-	cn.cu.RLock()
-	if cn.clientErr != nil {
-		cn.cu.RUnlock()
-		return nil, cn.clientErr
+	if err := cn.isLive(cm); err != nil {
+		return nil, err
 	}
-	cn.cu.RUnlock()
-	return cn.parser.Next()
+
+	indata, _, err := cn.parser.Next()
+	atomic.AddInt64(&cn.totalRead, int64(len(indata)))
+	return indata, err
 }
 
 func (cn *clientNetwork) readLoop(cm mnet.Client, conn net.Conn) {
 	defer cn.close(cm)
 	defer cn.worker.Done()
 
-	incoming := make([]byte, MinBufferSize, MaxBufferSize)
+	incoming := make([]byte, mnet.MinBufferSize, mnet.MaxBufferSize)
 	for {
 		n, err := conn.Read(incoming)
 		if err != nil {
@@ -370,34 +365,31 @@ func (cn *clientNetwork) readLoop(cm mnet.Client, conn net.Conn) {
 		}
 
 		// if we fail to parse the data then we error out.
-		if err := cn.parser.Parse(incoming[:n]); err != nil {
+		if err := cn.parser.Parse(incoming[:n], nil); err != nil {
 			return
 		}
 
 		atomic.AddInt64(&cn.totalRead, int64(n))
 
 		// Lets shrink buffer abit within area.
-		if n == len(incoming) && n < MaxBufferSize {
-			incoming = incoming[0 : MinBufferSize*2]
+		if n == len(incoming) && n < mnet.MaxBufferSize {
+			incoming = incoming[0 : mnet.MinBufferSize*2]
 		}
 
-		if n < len(incoming)/2 && len(incoming) > MinBufferSize {
+		if n < len(incoming)/2 && len(incoming) > mnet.MinBufferSize {
 			incoming = incoming[0 : len(incoming)/2]
 		}
 
-		if n > len(incoming) && len(incoming) > MinBufferSize && n < MaxBufferSize {
-			incoming = incoming[0 : MaxBufferSize/2]
+		if n > len(incoming) && len(incoming) > mnet.MinBufferSize && n < mnet.MaxBufferSize {
+			incoming = incoming[0 : mnet.MaxBufferSize/2]
 		}
 	}
 }
 
 func (cn *clientNetwork) close(cm mnet.Client) error {
-	cn.cu.RLock()
-	if cn.clientErr != nil {
-		cn.cu.RUnlock()
-		return cn.clientErr
+	if err := cn.isLive(cm); err != nil {
+		return err
 	}
-	cn.cu.RUnlock()
 
 	cn.metrics.Emit(
 		metrics.WithID(cn.id),
@@ -411,7 +403,7 @@ func (cn *clientNetwork) close(cm mnet.Client) error {
 	cn.cu.Unlock()
 
 	cn.do.Do(func() {
-		conn.SetWriteDeadline(time.Now().Add(MaxFlushDeadline))
+		conn.SetWriteDeadline(time.Now().Add(mnet.MaxFlushDeadline))
 		cn.buffWriter.Flush()
 		conn.SetWriteDeadline(time.Time{})
 		cn.buffWriter.Reset(cn.scratch)
@@ -419,9 +411,7 @@ func (cn *clientNetwork) close(cm mnet.Client) error {
 		conn.Close()
 	})
 
-	cn.cu.Lock()
-	cn.clientErr = mnet.ErrAlreadyClosed
-	cn.cu.Unlock()
+	atomic.StoreInt64(&cn.closed, 1)
 
 	cn.worker.Wait()
 
@@ -429,13 +419,9 @@ func (cn *clientNetwork) close(cm mnet.Client) error {
 }
 
 func (cn *clientNetwork) reconnect(cm mnet.Client, altAddr string) error {
-	// if we are still connected, then we can't do anything here.
-	cn.cu.RLock()
-	if cn.conn != nil {
-		cn.cu.RUnlock()
-		return mnet.ErrStillConnected
+	if err := cn.isLive(cm); err != nil {
+		return err
 	}
-	cn.cu.RUnlock()
 
 	atomic.AddInt64(&cn.totalReconnects, 1)
 
@@ -458,12 +444,11 @@ func (cn *clientNetwork) reconnect(cm mnet.Client, altAddr string) error {
 
 	// If failure was met, then return error and go-offline again.
 	if err != nil {
-		atomic.AddInt64(&cn.totalReconnects, 1)
 		return err
 	}
 
-	// Ensure bufWriter timer is stopped immediately and scratch is released from
-	// use use by writer as well.
+	atomic.StoreInt64(&cn.closed, 0)
+
 	cn.buffWriter.Reset(nil)
 
 	// if offline buffer has data written in, before new connection was started,
@@ -478,7 +463,6 @@ func (cn *clientNetwork) reconnect(cm mnet.Client, altAddr string) error {
 	}
 
 	cn.cu.Lock()
-	cn.clientErr = nil
 	cn.do = sync.Once{}
 	cn.conn = conn
 	cn.buffWriter.Reset(conn)
@@ -493,8 +477,8 @@ func (cn *clientNetwork) reconnect(cm mnet.Client, altAddr string) error {
 }
 
 // getConn returns net.Conn for giving addr.
-func (cn *clientNetwork) getConn(cm mnet.Client, addr string) (net.Conn, error) {
-	lastSleep := MinTemporarySleep
+func (cn *clientNetwork) getConn(_ mnet.Client, addr string) (net.Conn, error) {
+	lastSleep := mnet.MinTemporarySleep
 
 	var err error
 	var conn net.Conn
@@ -510,7 +494,7 @@ func (cn *clientNetwork) getConn(cm mnet.Client, addr string) (net.Conn, error) 
 				metrics.Message("Connection: failed to connect"),
 			)
 			if netErr, ok := err.(net.Error); ok && netErr.Temporary() {
-				if lastSleep >= MaxTemporarySleep {
+				if lastSleep >= mnet.MaxTemporarySleep {
 					return nil, err
 				}
 

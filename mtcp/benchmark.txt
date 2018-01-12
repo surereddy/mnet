@@ -69,3 +69,39 @@ Benchmark4KMessages-4                      	50000000	        41.5 ns/op	98808.60
 Benchmark8KMessages-4                      	50000000	        40.8 ns/op	200838.23 MB/s	       0 B/op	       0 allocs/op
 PASS
 ok  	github.com/influx6/mnet/mtcp	34.604s
+
+Time: 7:31, 12th, Jan, 2018
+goos: darwin
+goarch: amd64
+pkg: github.com/influx6/mnet/mtcp
+BenchmarkNoBytesMessages-4    	30000000	        47.1 ns/op	 127.41 MB/s	       0 B/op	       0 allocs/op
+Benchmark2BytesMessages-4     	30000000	        42.8 ns/op	 186.91 MB/s	       0 B/op	       0 allocs/op
+Benchmark4BytesMessages-4     	30000000	        42.7 ns/op	 234.43 MB/s	       0 B/op	       0 allocs/op
+Benchmark8BytesMessages-4     	30000000	        43.1 ns/op	 324.56 MB/s	       0 B/op	       0 allocs/op
+Benchmark16BytesMessages-4    	30000000	        42.4 ns/op	 519.47 MB/s	       0 B/op	       0 allocs/op
+Benchmark32BytesMessages-4    	30000000	        41.7 ns/op	 911.93 MB/s	       0 B/op	       0 allocs/op
+Benchmark64BytesMessages-4    	50000000	        42.2 ns/op	1659.15 MB/s	       0 B/op	       0 allocs/op
+Benchmark128BytesMessages-4   	30000000	        41.2 ns/op	3252.38 MB/s	       0 B/op	       0 allocs/op
+Benchmark256BytesMessages-4   	30000000	        44.2 ns/op	5927.46 MB/s	       0 B/op	       0 allocs/op
+Benchmark1KMessages-4         	30000000	        51.3 ns/op	20085.31 MB/s	       0 B/op	       0 allocs/op
+Benchmark4KMessages-4         	30000000	        47.1 ns/op	87023.23 MB/s	       0 B/op	       0 allocs/op
+Benchmark8KMessages-4         	30000000	        45.7 ns/op	179226.61 MB/s	       0 B/op	       0 allocs/op
+Benchmark16KMessages-4        	30000000	        45.7 ns/op	358461.13 MB/s	       0 B/op	       0 allocs/op
+
+Time: 11:47, 12th, Jan, 2018
+goos: darwin
+goarch: amd64
+pkg: github.com/influx6/mnet/mtcp
+BenchmarkNoBytesMessages-4    	50000000	        33.3 ns/op	 180.04 MB/s	       0 B/op	       0 allocs/op
+Benchmark2BytesMessages-4     	50000000	        33.1 ns/op	 241.78 MB/s	       0 B/op	       0 allocs/op
+Benchmark4BytesMessages-4     	50000000	        32.7 ns/op	 305.82 MB/s	       0 B/op	       0 allocs/op
+Benchmark8BytesMessages-4     	50000000	        36.2 ns/op	 386.54 MB/s	       0 B/op	       0 allocs/op
+Benchmark16BytesMessages-4    	50000000	        34.2 ns/op	 643.35 MB/s	       0 B/op	       0 allocs/op
+Benchmark32BytesMessages-4    	50000000	        37.3 ns/op	1019.72 MB/s	       0 B/op	       0 allocs/op
+Benchmark64BytesMessages-4    	50000000	        36.7 ns/op	1905.34 MB/s	       0 B/op	       0 allocs/op
+Benchmark128BytesMessages-4   	30000000	        41.4 ns/op	3238.24 MB/s	       0 B/op	       0 allocs/op
+Benchmark256BytesMessages-4   	30000000	        42.4 ns/op	6185.92 MB/s	       0 B/op	       0 allocs/op
+Benchmark1KMessages-4         	50000000	        33.0 ns/op	31226.71 MB/s	       0 B/op	       0 allocs/op
+Benchmark4KMessages-4         	50000000	        34.1 ns/op	120302.92 MB/s	       0 B/op	       0 allocs/op
+Benchmark8KMessages-4         	50000000	        33.8 ns/op	242833.51 MB/s	       0 B/op	       0 allocs/op
+Benchmark16KMessages-4        	50000000	        33.7 ns/op	486325.63 MB/s	       0 B/op	       0 allocs/op

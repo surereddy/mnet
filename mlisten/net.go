@@ -5,6 +5,7 @@ package mlisten
 import (
 	"crypto/tls"
 	"errors"
+	"io"
 	"net"
 	"sync"
 	"time"
@@ -12,7 +13,6 @@ import (
 	"sync/atomic"
 
 	"github.com/influx6/faux/netutils"
-	"github.com/influx6/melon"
 )
 
 const (
@@ -29,8 +29,16 @@ var (
 	ErrListenerClosed = errors.New("listener has being closed")
 )
 
+// ConnReader defines reader for net.Conn type.
+type ConnReadWriteCloser interface {
+	io.Closer
+	Addr() net.Addr
+	WriteConn(net.Conn) error
+	ReadConn() (net.Conn, error)
+}
+
 // Listen returns a Readr and Writer for reading net.Conns from a underline net.Listener.
-func Listen(protocol string, addr string, config *tls.Config) (melon.ConnReadWriteCloser, error) {
+func Listen(protocol string, addr string, config *tls.Config) (ConnReadWriteCloser, error) {
 	lt, err := netutils.MakeListener(protocol, addr, config)
 	if err != nil {
 		return nil, err
@@ -41,6 +49,7 @@ func Listen(protocol string, addr string, config *tls.Config) (melon.ConnReadWri
 	}
 
 	readWriter := new(connReadWriter)
+	readWriter.addr = lt.Addr()
 	readWriter.tls = config
 	readWriter.l = lt
 
@@ -48,9 +57,14 @@ func Listen(protocol string, addr string, config *tls.Config) (melon.ConnReadWri
 }
 
 type connReadWriter struct {
-	ml  sync.Mutex
-	l   net.Listener
-	tls *tls.Config
+	addr net.Addr
+	ml   sync.Mutex
+	l    net.Listener
+	tls  *tls.Config
+}
+
+func (cs *connReadWriter) Addr() net.Addr {
+	return cs.addr
 }
 
 // WriteConn receives the provided net.Conn and closes the connection, this

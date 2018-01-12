@@ -11,6 +11,12 @@ be built on.
 go get -v github.com/influx6/mnet/...
 ```
 
+## Design
+
+Mnet presents a flexible design in the approach of hpw structures are built. The `mnet.Client` is a special case which is shared among the differing protocols of `tcp`, `udp` and `websocket`. Each provides the `mnet.Client` struct with appropriate methods to allow the client perform the expected operations required.
+
+This approach allows a massive level of flexibility and easily lets us swap in like lego blocks methods to power the underline protocol operations.
+
 ## Protocols Implemented
 
 ### TCP

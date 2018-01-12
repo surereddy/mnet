@@ -16,6 +16,13 @@ type ConnHandler func(Client) error
 // data and error.
 type ReaderFunc func(Client) ([]byte, error)
 
+// ReaderFromFunc defines a function which takes giving incoming Client and returns associated
+// data and error.
+type ReaderFromFunc func(Client) ([]byte, net.Addr, error)
+
+// WriteToFunc defines a function type which takes a client and writes out data.
+type WriteToFunc func(Client, net.Addr, int) (io.WriteCloser, error)
+
 // WriteFunc defines a function type which takes a client and writes out data.
 type WriteFunc func(Client, int) (io.WriteCloser, error)
 
@@ -25,6 +32,10 @@ type ClientSiblingsFunc func(Client) ([]Client, error)
 // ClientFunc defines a function type which receives a Client type and
 // returns a possible error.
 type ClientFunc func(Client) error
+
+// ClientWithAddrFunc defines a function type which receives a Client type and
+// and net.Addr and returns a possible error.
+type ClientWithAddrFunc func(Client, net.Addr) error
 
 // ClientAddrFunc returns a net.Addr associated with a given client else
 // an error.
@@ -48,11 +59,14 @@ var (
 	ErrStillConnected                = errors.New("connection still active")
 	ErrAlreadyClosed                 = errors.New("already closed connection")
 	ErrReadNotAllowed                = errors.New("reading not allowed")
+	ErrReadFromNotAllowed            = errors.New("reading from a addr not allowed")
 	ErrLiveCheckNotAllowed           = errors.New("live status not allowed or supported")
 	ErrWriteNotAllowed               = errors.New("data writing not allowed")
+	ErrWriteToAddrNotAllowed         = errors.New("data writing to a addr not allowed")
 	ErrCloseNotAllowed               = errors.New("closing not allowed")
 	ErrBufferExpansionNotAllowed     = errors.New("buffer expansion not allowed")
 	ErrFlushNotAllowed               = errors.New("write flushing not allowed")
+	ErrFlushToAddrNotAllowed         = errors.New("write flushing to target addr not allowed")
 	ErrSiblingsNotAllowed            = errors.New("siblings retrieval not allowed")
 	ErrStatisticsNotProvided         = errors.New("statistics not provided")
 	ErrAddrNotProvided               = errors.New("net.Addr is not provided")
@@ -63,7 +77,8 @@ var (
 // network activities.
 type NetworkStatistic struct {
 	ID           string
-	Addr         string
+	LocalAddr    net.Addr
+	RemoteAddr   net.Addr
 	TotalClients int64
 	TotalClosed  int64
 	TotalOpened  int64
@@ -92,10 +107,13 @@ type Client struct {
 	LocalAddrFunc    ClientAddrFunc
 	RemoteAddrFunc   ClientAddrFunc
 	ReaderFunc       ReaderFunc
+	ReaderFromFunc   ReaderFromFunc
 	WriteFunc        WriteFunc
+	WriteToFunc      WriteToFunc
 	CloseFunc        ClientFunc
 	LiveFunc         ClientFunc
 	FlushFunc        ClientFunc
+	FlushAddrFunc    ClientWithAddrFunc
 	SiblingsFunc     ClientSiblingsFunc
 	StatisticFunc    ClientStatisticsFunc
 	ReconnectionFunc ClientReconnectionFunc
@@ -180,6 +198,7 @@ func (c Client) Live() error {
 
 // Reconnect attempts to reconnect with external endpoint.
 // Also allows provision of alternate address to reconnect with.
+// NOTE: Not all may implement this has it's optional.
 func (c Client) Reconnect(altAddr string) error {
 	c.Metrics.Emit(
 		metrics.WithID(c.ID),
@@ -203,6 +222,27 @@ func (c Client) Reconnect(altAddr string) error {
 	}
 
 	return nil
+}
+
+// ReadFrom reads the underline data into the provided connection
+// returning senders address and data.
+// NOTE: Not all may implement this has it's optional.
+func (c Client) ReadFrom() ([]byte, net.Addr, error) {
+	if c.ReaderFromFunc == nil {
+		return nil, nil, ErrReadFromNotAllowed
+	}
+
+	return c.ReaderFromFunc(c)
+}
+
+// WriteTo writes provided data into connection targeting giving address.
+// NOTE: Not all may implement this has it's optional.
+func (c Client) WriteTo(addr net.Addr, toWriteSize int) (io.WriteCloser, error) {
+	if c.WriteFunc == nil {
+		return nil, ErrWriteToAddrNotAllowed
+	}
+
+	return c.WriteToFunc(c, addr, toWriteSize)
 }
 
 // Read reads the underline data into the provided slice.
@@ -231,6 +271,17 @@ func (c Client) Flush() error {
 	}
 
 	return c.FlushFunc(c)
+}
+
+// FlushAddr sends all accumulated message within clients buffer into
+// connection for giving address.
+// NOTE: Not all may implement this has it's optional.
+func (c Client) FlushAddr(addr net.Addr) error {
+	if c.FlushFunc == nil {
+		return ErrFlushToAddrNotAllowed
+	}
+
+	return c.FlushAddrFunc(c, addr)
 }
 
 // Statistics returns statistics associated with client.j
@@ -274,6 +325,10 @@ func (c Client) Close() error {
 }
 
 // Others returns other client associated with the source of this client.
+// NOTE: Not all may implement this has it's optional.
+// WARNING: And those who implement this method must ensure the Read method do not
+// exists, to avoid conflict of internal behaviour. More so, only the
+// server client handler should ever have access to Read/ReadFrom methods.
 func (c Client) Others() ([]Client, error) {
 	defer c.Metrics.Emit(
 		metrics.WithID(c.ID),
