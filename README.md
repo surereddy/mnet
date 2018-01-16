@@ -1,6 +1,8 @@
 MNet
 ------
 [![Go Report Card](https://goreportcard.com/badge/github.com/influx6/mnet)](https://goreportcard.com/report/github.com/influx6/mnet)
+[![Travis CI](https://travis-ci.org/influx6/mnet.svg?master=branch)](https://travis-ci.org/influx6/mnet)
+[![Circle CI](https://circleci.com/gh/influx6/mnet.svg?style=svg)](https://circleci.com/gh/influx6/mnet)
 
 Mnet is a collection of superfast networking packages with implementations from ontop of `tcp`, `udp`, and others as planned. It exists to provide a lightweight foundation where other higher level APIs can 
 be built on.
