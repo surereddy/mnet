@@ -295,10 +295,6 @@ func (cn *clientNetwork) write(cm mnet.Client, inSize int) (io.WriteCloser, erro
 		cn.bu.Lock()
 		defer cn.bu.Unlock()
 
-		if cn.buffWriter == nil {
-			return mnet.ErrAlreadyClosed
-		}
-
 		//available := cn.buffWriter.Available()
 		buffered := cn.buffWriter.Buffered()
 		atomic.AddInt64(&cn.totalFlushed, int64(buffered))

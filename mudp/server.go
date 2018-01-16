@@ -59,7 +59,7 @@ type netClient struct {
 	metrics        metrics.Metrics
 	parser         *internal.TaggedMessages
 	closedCounter  int64
-	bu             sync.RWMutex
+	bu             sync.Mutex
 	buffer         *bufio.Writer
 	cu             sync.Mutex
 	conn           *net.UDPConn
@@ -100,19 +100,14 @@ func (nc *netClient) write(mn mnet.Client, size int) (io.WriteCloser, error) {
 		return nil, mnet.ErrAlreadyClosed
 	}
 
-	var buffer *bufio.Writer
-	nc.bu.Lock()
-	buffer = nc.buffer
-	nc.bu.Unlock()
-
 	return bufferPool.Get(size, func(d int, from io.WriterTo) error {
 		atomic.AddInt64(&nc.totalWriteMsgs, 1)
 		atomic.AddInt64(&nc.totalWritten, int64(d))
 
-		nc.bu.RLock()
-		defer nc.bu.RUnlock()
+		nc.bu.Lock()
+		defer nc.bu.Unlock()
 
-		buffered := buffer.Buffered()
+		buffered := nc.buffer.Buffered()
 		atomic.AddInt64(&nc.totalFlushOut, int64(buffered))
 
 		// size of next write.
@@ -124,7 +119,7 @@ func (nc *netClient) write(mn mnet.Client, size int) (io.WriteCloser, error) {
 		if toWrite >= nc.maxWrite {
 			//TODO: Why do we face speed complexity with using deadline here?
 			//conn.SetWriteDeadline(time.Now().Add(nc.maxDeadline))
-			if err := buffer.Flush(); err != nil {
+			if err := nc.buffer.Flush(); err != nil {
 				//conn.SetWriteDeadline(time.Time{})
 				return err
 			}
@@ -134,10 +129,10 @@ func (nc *netClient) write(mn mnet.Client, size int) (io.WriteCloser, error) {
 		// write length header first.
 		header := make([]byte, mnet.HeaderLength)
 		binary.BigEndian.PutUint32(header, uint32(d))
-		buffer.Write(header)
+		nc.buffer.Write(header)
 
 		// then flush data alongside header.
-		_, err := from.WriteTo(buffer)
+		_, err := from.WriteTo(nc.buffer)
 		return err
 	}), nil
 }
@@ -174,7 +169,6 @@ func (nc *netClient) flush(mn mnet.Client) error {
 	}
 
 	var conn *net.UDPConn
-
 	nc.cu.Lock()
 	conn = nc.conn
 	nc.cu.Unlock()
@@ -183,12 +177,14 @@ func (nc *netClient) flush(mn mnet.Client) error {
 		return mnet.ErrAlreadyClosed
 	}
 
-	nc.bu.RLock()
-	defer nc.bu.RUnlock()
+	var buffer *bufio.Writer
+	nc.bu.Lock()
+	buffer = nc.buffer
+	nc.bu.Unlock()
 
-	if nc.buffer.Buffered() != 0 {
+	if buffer.Buffered() != 0 {
 		conn.SetWriteDeadline(time.Now().Add(nc.maxDeadline))
-		if err := nc.buffer.Flush(); err != nil {
+		if err := buffer.Flush(); err != nil {
 			conn.SetWriteDeadline(time.Time{})
 			return err
 		}
@@ -216,16 +212,18 @@ func (nc *netClient) close(mn mnet.Client) error {
 		return mnet.ErrAlreadyClosed
 	}
 
+	var buffer *bufio.Writer
 	nc.bu.Lock()
-	defer nc.bu.Unlock()
+	buffer = nc.buffer
+	nc.buffer = nil
+	nc.bu.Unlock()
 
-	if nc.buffer.Buffered() != 0 {
+	if buffer.Buffered() != 0 {
 		conn.SetWriteDeadline(time.Now().Add(nc.maxDeadline))
-		nc.buffer.Flush()
+		buffer.Flush()
 		conn.SetWriteDeadline(time.Time{})
 	}
-	nc.buffer.Reset(nil)
-	nc.buffer = nil
+	buffer.Reset(nil)
 
 	return conn.Close()
 }
