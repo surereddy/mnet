@@ -7,7 +7,7 @@ jobs:
     docker:
       # specify the version
       - image: circleci/golang:1.9
-    working_directory: /go/src/github.com/influx6/wordies
+    working_directory: /go/src/github.com/influx6/mnet
     steps:
       - checkout
       - run: go test -cover ./mtcp/...
