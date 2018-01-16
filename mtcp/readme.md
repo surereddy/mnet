@@ -3,16 +3,6 @@ MTCP
 MTCP implements a tcp network server and client library for the `mnet` package to provide superfast reads and writes. Mtcp guarantees double digits nanoseconds transfer regardless of data size.
 
 
-## Implemented
-
-Mtcp implements all methods required by the `mnet.Client` type except the following:
-
-- `mnet.Client.WriteTo`
-- `mnet.Client.ReadFrom`
-- `mnet.Client.FlushAddr`
-
-Hence when such methods are called, error will be returned.
-
 ## Benchmarks
 
 Below are recently runned benchmarks, see [BenchmarkTests](./benchmark.txt) for older runs.
