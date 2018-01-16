@@ -289,10 +289,6 @@ func (cn *clientNetwork) write(cm mnet.Client, inSize int) (io.WriteCloser, erro
 	}
 
 	return bufferPool.Get(inSize, func(incoming int, w io.WriterTo) error {
-		if conn == nil {
-			return mnet.ErrAlreadyClosed
-		}
-
 		atomic.AddInt64(&cn.MessageWritten, 1)
 		atomic.AddInt64(&cn.totalWritten, int64(incoming))
 
