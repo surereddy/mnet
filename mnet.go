@@ -107,9 +107,7 @@ type Client struct {
 	LocalAddrFunc    ClientAddrFunc
 	RemoteAddrFunc   ClientAddrFunc
 	ReaderFunc       ReaderFunc
-	ReaderFromFunc   ReaderFromFunc
 	WriteFunc        WriteFunc
-	WriteToFunc      WriteToFunc
 	CloseFunc        ClientFunc
 	LiveFunc         ClientFunc
 	FlushFunc        ClientFunc
@@ -117,6 +115,8 @@ type Client struct {
 	SiblingsFunc     ClientSiblingsFunc
 	StatisticFunc    ClientStatisticsFunc
 	ReconnectionFunc ClientReconnectionFunc
+	//ReaderFromFunc   ReaderFromFunc
+	//WriteToFunc      WriteToFunc
 }
 
 // LocalAddr returns local address associated with given client.
@@ -227,23 +227,23 @@ func (c Client) Reconnect(altAddr string) error {
 // ReadFrom reads the underline data into the provided connection
 // returning senders address and data.
 // NOTE: Not all may implement this has it's optional.
-func (c Client) ReadFrom() ([]byte, net.Addr, error) {
-	if c.ReaderFromFunc == nil {
-		return nil, nil, ErrReadFromNotAllowed
-	}
-
-	return c.ReaderFromFunc(c)
-}
+//func (c Client) ReadFrom() ([]byte, net.Addr, error) {
+//	if c.ReaderFromFunc == nil {
+//		return nil, nil, ErrReadFromNotAllowed
+//	}
+//
+//	return c.ReaderFromFunc(c)
+//}
 
 // WriteTo writes provided data into connection targeting giving address.
 // NOTE: Not all may implement this has it's optional.
-func (c Client) WriteTo(addr net.Addr, toWriteSize int) (io.WriteCloser, error) {
-	if c.WriteFunc == nil {
-		return nil, ErrWriteToAddrNotAllowed
-	}
-
-	return c.WriteToFunc(c, addr, toWriteSize)
-}
+//func (c Client) WriteTo(addr net.Addr, toWriteSize int) (io.WriteCloser, error) {
+//	if c.WriteFunc == nil {
+//		return nil, ErrWriteToAddrNotAllowed
+//	}
+//
+//	return c.WriteToFunc(c, addr, toWriteSize)
+//}
 
 // Read reads the underline data into the provided slice.
 func (c Client) Read() ([]byte, error) {
@@ -271,17 +271,6 @@ func (c Client) Flush() error {
 	}
 
 	return c.FlushFunc(c)
-}
-
-// FlushAddr sends all accumulated message within clients buffer into
-// connection for giving address.
-// NOTE: Not all may implement this has it's optional.
-func (c Client) FlushAddr(addr net.Addr) error {
-	if c.FlushFunc == nil {
-		return ErrFlushToAddrNotAllowed
-	}
-
-	return c.FlushAddrFunc(c, addr)
 }
 
 // Statistics returns statistics associated with client.j

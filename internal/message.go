@@ -1,4 +1,4 @@
-package mnet
+package internal
 
 import (
 	"errors"
@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 
 	"github.com/influx6/faux/pools/seeker"
+	"github.com/influx6/mnet"
 )
 
 const (
@@ -94,7 +95,7 @@ func (smp *TaggedMessages) Next() ([]byte, net.Addr, error) {
 	smp.mu.RLock()
 	if smp.tail == nil && smp.head == nil {
 		smp.mu.RUnlock()
-		return nil, nil, ErrNoDataYet
+		return nil, nil, mnet.ErrNoDataYet
 	}
 
 	head := smp.head

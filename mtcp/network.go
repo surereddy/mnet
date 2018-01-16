@@ -21,6 +21,7 @@ import (
 	"github.com/influx6/faux/pools/done"
 	"github.com/influx6/melon"
 	"github.com/influx6/mnet"
+	"github.com/influx6/mnet/internal"
 	"github.com/influx6/mnet/mlisten"
 	uuid "github.com/satori/go.uuid"
 )
@@ -49,7 +50,7 @@ type networkConn struct {
 
 	network *Network
 	sos     *buffer.GuardedBuffer
-	parser  *mnet.TaggedMessages
+	parser  *internal.TaggedMessages
 
 	mu   sync.RWMutex
 	conn net.Conn
@@ -550,7 +551,7 @@ func (n *Network) runStream(stream melon.ConnReadWriteCloser) {
 			cn.ctx = n.ctx
 			cn.network = n
 			cn.conn = conn
-			cn.parser = new(mnet.TaggedMessages)
+			cn.parser = new(internal.TaggedMessages)
 			cn.localAddr = conn.LocalAddr()
 			cn.remoteAddr = conn.RemoteAddr()
 			cn.maxWrite = n.ClientMaxWriteSize

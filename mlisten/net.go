@@ -104,6 +104,10 @@ func (cs *connReadWriter) ReadConn() (net.Conn, error) {
 
 	newConn, err := listener.Accept()
 	if err != nil {
+		if ne, ok := err.(*net.OpError); ok && !ne.Temporary() {
+			cs.Close()
+			return nil, ErrListenerClosed
+		}
 		return nil, err
 	}
 

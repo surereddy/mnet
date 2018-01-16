@@ -31,6 +31,52 @@ func init() {
 	}
 }
 
+func TestUDPServerWithNetConn(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	netw, err := createNewNetwork(ctx, "localhost:4050")
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully create network")
+	}
+	tests.Passed("Should have successfully create network")
+
+	conn, err := dialer.Dial("udp", "localhost:4050")
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully connected to network")
+	}
+	tests.Passed("Should have successfully connected to network")
+
+	udpconn, ok := conn.(*net.UDPConn)
+	if !ok {
+		tests.Failed("Should have gotten net.UDPConn type from dialer")
+	}
+	tests.Passed("Should have gotten net.UDPConn type from dialer")
+
+	payload := makeMessage([]byte("pub help"))
+	if _, err := conn.Write(payload); err != nil {
+		tests.FailedWithError(err, "Should have delivered message to network as client")
+	}
+	tests.Passed("Should have delivered message to network as client")
+
+	expected := []byte("now publishing to [help]\r\n")
+	received, _, err := readMessage(udpconn)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully read message from network")
+	}
+	tests.Passed("Should have successfully read message from network")
+
+	if !bytes.Equal(received, expected) {
+		tests.Info("Received: %+q", received)
+		tests.Info("Expected: %+q", expected)
+		tests.FailedWithError(err, "Should have successfully matched expected data with received from network")
+	}
+	tests.Passed("Should have successfully matched expected data with received from network")
+
+	conn.Close()
+	cancel()
+
+	netw.Wait()
+}
+
 func TestUDPServerWithMUDPClient(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	netw, err := createNewNetwork(ctx, "localhost:4050")
@@ -96,52 +142,6 @@ func TestUDPServerWithMUDPClient(t *testing.T) {
 	netw.Wait()
 }
 
-func TestUDPServerWithNetConn(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	netw, err := createNewNetwork(ctx, "localhost:4050")
-	if err != nil {
-		tests.FailedWithError(err, "Should have successfully create network")
-	}
-	tests.Passed("Should have successfully create network")
-
-	conn, err := dialer.Dial("udp", "localhost:4050")
-	if err != nil {
-		tests.FailedWithError(err, "Should have successfully connected to network")
-	}
-	tests.Passed("Should have successfully connected to network")
-
-	udpconn, ok := conn.(*net.UDPConn)
-	if !ok {
-		tests.Failed("Should have gotten net.UDPConn type from dialer")
-	}
-	tests.Passed("Should have gotten net.UDPConn type from dialer")
-
-	payload := makeMessage([]byte("pub help"))
-	if _, err := conn.Write(payload); err != nil {
-		tests.FailedWithError(err, "Should have delivered message to network as client")
-	}
-	tests.Passed("Should have delivered message to network as client")
-
-	expected := []byte("now publishing to [help]\r\n")
-	received, _, err := readMessage(udpconn)
-	if err != nil {
-		tests.FailedWithError(err, "Should have successfully read message from network")
-	}
-	tests.Passed("Should have successfully read message from network")
-
-	if !bytes.Equal(received, expected) {
-		tests.Info("Received: %+q", received)
-		tests.Info("Expected: %+q", expected)
-		tests.FailedWithError(err, "Should have successfully matched expected data with received from network")
-	}
-	tests.Passed("Should have successfully matched expected data with received from network")
-
-	conn.Close()
-	cancel()
-
-	netw.Wait()
-}
-
 func createNewNetwork(ctx context.Context, addr string) (*mudp.Network, error) {
 	var netw mudp.Network
 	netw.Addr = addr
@@ -168,6 +168,7 @@ func createNewNetwork(ctx context.Context, addr string) (*mudp.Network, error) {
 
 			command := messages[0]
 			rest := messages[1:]
+			tests.Info("UDP Server received: %q -> %+q", command, rest)
 
 			switch command {
 			case "pub":
@@ -211,22 +212,19 @@ func makeMessage(msg []byte) []byte {
 }
 
 func readMessage(conn *net.UDPConn) ([]byte, net.Addr, error) {
-	incoming := make([]byte, 4)
+	incoming := make([]byte, 128)
 	n, addr, err := conn.ReadFrom(incoming)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	expectedLen := binary.BigEndian.Uint32(incoming[:n])
-	data := make([]byte, expectedLen)
-	n, err = conn.Read(data)
-	if err != nil {
-		return nil, nil, err
+	incoming = incoming[:n]
+
+	expectedLen := int(binary.BigEndian.Uint32(incoming[:mnet.HeaderLength]))
+	data := incoming[mnet.HeaderLength:]
+	if len(data) != expectedLen {
+		return nil, addr, errors.New("expected length unmarched")
 	}
 
-	if n != int(expectedLen) {
-		return data, addr, errors.New("expected length unmarched")
-	}
-
-	return data[:n], addr, nil
+	return data, addr, nil
 }

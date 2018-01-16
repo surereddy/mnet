@@ -15,6 +15,7 @@ import (
 	"github.com/influx6/faux/metrics"
 	"github.com/influx6/faux/netutils"
 	"github.com/influx6/mnet"
+	"github.com/influx6/mnet/internal"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -140,8 +141,8 @@ func Connect(addr string, ops ...ConnectOptions) (mnet.Client, error) {
 
 	network.id = c.ID
 	network.addr = addr
-	network.parser = new(mnet.TaggedMessages)
-	network.scratch = bytes.NewBuffer(make([]byte, 0, mnet.DefaultReconnectBufferSize))
+	network.parser = new(internal.TaggedMessages)
+	//network.scratch = bytes.NewBuffer(make([]byte, 0, mnet.DefaultReconnectBufferSize))
 	network.buffWriter = bufio.NewWriterSize(network.scratch, network.clientMaxWriteSize)
 
 	c.Metrics = network.metrics
@@ -178,7 +179,7 @@ type clientNetwork struct {
 	clientMaxWriteSize     int
 	clientMaxWriteDeadline time.Duration
 
-	parser     *mnet.TaggedMessages
+	parser     *internal.TaggedMessages
 	scratch    *bytes.Buffer
 	bu         sync.Mutex
 	buffWriter *bufio.Writer
@@ -455,12 +456,12 @@ func (cn *clientNetwork) reconnect(cm mnet.Client, altAddr string) error {
 	// meaning we have offline data, then first flush this in, then set up new connection as
 	// writer. But if error in write occurs like short write, then set back scratch as buff's
 	// writer, write back data which was not written then return error.
-	if cn.scratch.Len() != 0 {
-		if _, werr := cn.scratch.WriteTo(conn); werr != nil {
-			cn.buffWriter.Reset(cn.scratch)
-			return werr
-		}
-	}
+	//if cn.scratch.Len() != 0 {
+	//	if _, werr := cn.scratch.WriteTo(conn); werr != nil {
+	//		cn.buffWriter.Reset(cn.scratch)
+	//		return werr
+	//	}
+	//}
 
 	cn.cu.Lock()
 	cn.do = sync.Once{}

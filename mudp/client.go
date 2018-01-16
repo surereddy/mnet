@@ -1,19 +1,25 @@
 package mudp
 
 import (
+	"errors"
 	"net"
 	"sync/atomic"
 	"time"
 
 	"bufio"
-	"context"
 
 	"sync"
 
 	"github.com/influx6/faux/metrics"
 	"github.com/influx6/faux/netutils"
 	"github.com/influx6/mnet"
+	"github.com/influx6/mnet/internal"
 	uuid "github.com/satori/go.uuid"
+)
+
+// errors ..
+var (
+	ErrExpectedUDPConn = errors.New("net.Conn returned is not a *net.UDPConn")
 )
 
 // ConnectOptions defines a function type used to apply given
@@ -87,6 +93,10 @@ func Connect(addr string, ops ...ConnectOptions) (mnet.Client, error) {
 		op(network)
 	}
 
+	if network.network == "" {
+		network.network = "udp"
+	}
+
 	if network.metrics == nil {
 		network.metrics = metrics.New()
 	}
@@ -106,15 +116,14 @@ func Connect(addr string, ops ...ConnectOptions) (mnet.Client, error) {
 		}
 	}
 
-	network.ctx = context.Background()
-	network.parser = new(mnet.TaggedMessages)
-	network.buffers = make(map[string]*bufio.Writer)
+	network.parser = new(internal.TaggedMessages)
 
 	c.NID = network.nid
+	c.Metrics = network.metrics
 	c.CloseFunc = network.close
 	c.WriteFunc = network.write
-	c.WriteToFunc = network.writeTo
-	c.ReaderFromFunc = network.readFrom
+	c.WriteFunc = network.write
+	c.ReaderFunc = network.read
 	c.FlushFunc = network.flush
 	c.LiveFunc = network.isAlive
 	c.StatisticFunc = network.getStatistics
@@ -140,6 +149,11 @@ type clientConn struct {
 	waiter      sync.WaitGroup
 	keepTimeout time.Duration
 	dialTimeout time.Duration
+	started     int64
+}
+
+func (cn *clientConn) isStarted() bool {
+	return atomic.LoadInt64(&cn.started) == 1
 }
 
 func (cn *clientConn) close(jn mnet.Client) error {
@@ -153,41 +167,40 @@ func (cn *clientConn) close(jn mnet.Client) error {
 }
 
 func (cn *clientConn) reconnect(jn mnet.Client, addr string) error {
-	if err := cn.isAlive(jn); err == nil {
+	if err := cn.isAlive(jn); err == nil && cn.isStarted() {
 		return nil
 	}
 
+	defer atomic.StoreInt64(&cn.started, 1)
+
 	cn.waiter.Wait()
 
-	if cn.network == "" {
-		cn.network = "udp"
-	}
-
-	if cn.mainAddr == nil || (cn.mainAddr != nil && addr != "") {
-		mainAddr, err := net.ResolveUDPAddr(cn.network, addr)
+	if cn.remoteAddr == nil || (cn.remoteAddr != nil && addr != "") {
+		raddr, err := net.ResolveUDPAddr(cn.network, addr)
 		if err != nil {
 			return err
 		}
 
-		cn.mainAddr = mainAddr
+		cn.remoteAddr = raddr
 	}
 
-	conn, err := cn.getConn(jn, cn.mainAddr)
+	conn, err := cn.getConn(jn, cn.remoteAddr)
 	if err != nil {
 		return err
 	}
 
-	cn.remoteAddr = conn.RemoteAddr()
 	cn.localAddr = conn.LocalAddr()
+	cn.mainAddr = cn.localAddr
 
 	cn.cu.Lock()
 	cn.conn = conn
 	cn.cu.Unlock()
 
 	cn.bu.Lock()
-	cn.buffers[cn.mainAddr.String()] = bufio.NewWriterSize(targetConn{
+	cn.buffer = bufio.NewWriterSize(targetConn{
 		conn:   conn,
-		target: cn.mainAddr,
+		client: true,
+		target: cn.remoteAddr,
 	}, cn.maxWrite)
 	cn.bu.Unlock()
 
@@ -258,7 +271,7 @@ func (cn *clientConn) getConn(_ mnet.Client, addr net.Addr) (*net.UDPConn, error
 	var err error
 	var conn net.Conn
 	for {
-		conn, err = cn.dialer.Dial(addr.Network(), addr.String())
+		conn, err = cn.dialer.Dial(cn.network, addr.String())
 		if err != nil {
 			cn.metrics.Emit(
 				metrics.Error(err),
@@ -285,5 +298,9 @@ func (cn *clientConn) getConn(_ mnet.Client, addr net.Addr) (*net.UDPConn, error
 		return nil, err
 	}
 
-	return conn.(*net.UDPConn), nil
+	if udpcon, ok := conn.(*net.UDPConn); ok {
+		return udpcon, nil
+	}
+
+	return nil, ErrExpectedUDPConn
 }

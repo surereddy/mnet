@@ -33,4 +33,10 @@ const (
 
 	// DefaultReconnectBufferSize sets the size of the buffer during reconnection.
 	DefaultReconnectBufferSize = 1024 * 1024 * 8
+
+	// HeaderLength defines the size of giving byte slice for message length header.
+	HeaderLength = 4
+
+	// MaxHeaderSize defines size of max header for message header length.
+	MaxHeaderSize = uint32(4294967295)
 )
