@@ -1,0 +1,123 @@
+{
+	"comment": "",
+	"ignore": "test",
+	"package": [
+		{
+			"checksumSHA1": "jt2qfJxo7XsMCo6RerjgcoaGZPM=",
+			"path": "github.com/fatih/color",
+			"revision": "67c513e5729f918f5e69786686770c27141a4490",
+			"revisionTime": "2017-08-04T15:04:06Z"
+		},
+		{
+			"checksumSHA1": "j+2QWtfa7AsYOoqpJuwwfgkOvr8=",
+			"path": "github.com/gobwas/httphead",
+			"revision": "01c9b01b368a438f615030bbbd5e4f9e0023e15c",
+			"revisionTime": "2017-10-16T04:39:08Z"
+		},
+		{
+			"checksumSHA1": "k2JgfxkzNCBHYQjcLq7kQmmNTCE=",
+			"path": "github.com/gobwas/pool",
+			"revision": "e294a5482d9a8523f8e6b2744ea2185083c838af",
+			"revisionTime": "2018-01-09T18:38:15Z"
+		},
+		{
+			"checksumSHA1": "Ba48FUMVbAmhww0n4ejqM/rdxl4=",
+			"path": "github.com/gobwas/pool/pbufio",
+			"revision": "e294a5482d9a8523f8e6b2744ea2185083c838af",
+			"revisionTime": "2018-01-09T18:38:15Z"
+		},
+		{
+			"checksumSHA1": "HNmQ5/HoIX1Pg+ZRD89bqspxstU=",
+			"path": "github.com/gobwas/pool/pbytes",
+			"revision": "e294a5482d9a8523f8e6b2744ea2185083c838af",
+			"revisionTime": "2018-01-09T18:38:15Z"
+		},
+		{
+			"checksumSHA1": "cCvPm/0VraPMSHo463kDgjPQeZE=",
+			"path": "github.com/gobwas/ws",
+			"revision": "48a5ceab2cbeff56f13c0328c63c3393b92ec9aa",
+			"revisionTime": "2018-01-14T19:52:27Z"
+		},
+		{
+			"checksumSHA1": "UzCoihzx3r8OQzraFKWpvxR+2zc=",
+			"path": "github.com/gobwas/ws/wsutil",
+			"revision": "48a5ceab2cbeff56f13c0328c63c3393b92ec9aa",
+			"revisionTime": "2018-01-14T19:52:27Z"
+		},
+		{
+			"checksumSHA1": "SKFbZyS3l8MBHgzLhSdLwu3t0Ts=",
+			"path": "github.com/influx6/faux/metrics",
+			"revision": "6d3478ef64a4f60b03663e23267800c91d1951ef",
+			"revisionTime": "2018-01-16T20:14:45Z"
+		},
+		{
+			"checksumSHA1": "t8UiQtn+4a+g1U8+FUTA8GsnKBg=",
+			"path": "github.com/influx6/faux/metrics/custom",
+			"revision": "6d3478ef64a4f60b03663e23267800c91d1951ef",
+			"revisionTime": "2018-01-16T20:14:45Z"
+		},
+		{
+			"checksumSHA1": "SPZmL8I0gXLZlYLasxzq2yYadg4=",
+			"path": "github.com/influx6/faux/netutils",
+			"revision": "6d3478ef64a4f60b03663e23267800c91d1951ef",
+			"revisionTime": "2018-01-16T20:14:45Z"
+		},
+		{
+			"checksumSHA1": "F4+gpOQxizs2we4NDtmu5ylXN7M=",
+			"path": "github.com/influx6/faux/pools/buffer",
+			"revision": "6d3478ef64a4f60b03663e23267800c91d1951ef",
+			"revisionTime": "2018-01-16T20:14:45Z"
+		},
+		{
+			"checksumSHA1": "6TfhLEEsgHRZi0INh4jnDzZMq2E=",
+			"path": "github.com/influx6/faux/pools/done",
+			"revision": "6d3478ef64a4f60b03663e23267800c91d1951ef",
+			"revisionTime": "2018-01-16T20:14:45Z"
+		},
+		{
+			"checksumSHA1": "3wLtq6AV0Kh6iz2J9RmsWIqdBiM=",
+			"path": "github.com/influx6/faux/pools/seeker",
+			"revision": "6d3478ef64a4f60b03663e23267800c91d1951ef",
+			"revisionTime": "2018-01-16T20:14:45Z"
+		},
+		{
+			"checksumSHA1": "/PE0RGwoNeVkhlVKWxnIt0TgAA4=",
+			"path": "github.com/influx6/faux/tests",
+			"revision": "6d3478ef64a4f60b03663e23267800c91d1951ef",
+			"revisionTime": "2018-01-16T20:14:45Z"
+		},
+		{
+			"checksumSHA1": "834Na7DxP//h7xitMUbPKCeXR80=",
+			"path": "github.com/influx6/melon",
+			"revision": "17ab5b862219b5e2893a4e67fc83d0c61b0e7a74",
+			"revisionTime": "2017-11-25T13:42:43Z"
+		},
+		{
+			"checksumSHA1": "sGC8yzCmU7CO6/Uy6TTWRgHpgLI=",
+			"origin": "github.com/fatih/color/vendor/github.com/mattn/go-colorable",
+			"path": "github.com/mattn/go-colorable",
+			"revision": "67c513e5729f918f5e69786686770c27141a4490",
+			"revisionTime": "2017-08-04T15:04:06Z"
+		},
+		{
+			"checksumSHA1": "w8LTR7SnKYaJgDdhvC5qTjYJ5s8=",
+			"origin": "github.com/fatih/color/vendor/github.com/mattn/go-isatty",
+			"path": "github.com/mattn/go-isatty",
+			"revision": "67c513e5729f918f5e69786686770c27141a4490",
+			"revisionTime": "2017-08-04T15:04:06Z"
+		},
+		{
+			"checksumSHA1": "zmC8/3V4ls53DJlNTKDZwPSC/dA=",
+			"path": "github.com/satori/go.uuid",
+			"revision": "5bf94b69c6b68ee1b541973bb8e1144db23a194b",
+			"revisionTime": "2017-03-21T23:07:31Z"
+		},
+		{
+			"checksumSHA1": "++MsxaBN30inOcAz7KvFGddE7ic=",
+			"path": "golang.org/x/sys/unix",
+			"revision": "810d7000345868fc619eb81f46307107118f4ae1",
+			"revisionTime": "2018-01-09T14:25:55Z"
+		}
+	],
+	"rootPath": "github.com/influx6/mnet"
+}
