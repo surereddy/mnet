@@ -31,10 +31,11 @@ var (
 )
 
 type networkConn struct {
+	nid        string
 	id         string
 	localAddr  net.Addr
 	remoteAddr net.Addr
-	ctx        context.Context
+	metrics    metrics.Metrics
 	worker     sync.WaitGroup
 	do         sync.Once
 
@@ -48,9 +49,8 @@ type networkConn struct {
 	totalReadMsgs  int64
 	closed         int64
 
-	network *Network
-	sos     *buffer.GuardedBuffer
-	parser  *internal.TaggedMessages
+	sos    *buffer.GuardedBuffer
+	parser *internal.TaggedMessages
 
 	mu   sync.RWMutex
 	conn net.Conn
@@ -181,15 +181,11 @@ func (nc *networkConn) closeConnection(cm mnet.Client) error {
 		return err
 	}
 
-	defer nc.network.Metrics.Emit(
+	defer nc.metrics.Emit(
 		metrics.WithID(nc.id),
-		metrics.With("network", nc.network.ID),
+		metrics.With("network", nc.nid),
 		metrics.Message("networkConn.closeConnection"),
 	)
-
-	nc.network.cu.Lock()
-	delete(nc.network.clients, nc.id)
-	nc.network.cu.Unlock()
 
 	atomic.StoreInt64(&nc.closed, 1)
 
@@ -268,11 +264,11 @@ func (nc *networkConn) readLoop(cm mnet.Client) {
 				bu.WriteString("-ERR ")
 				bu.WriteString(err.Error())
 			})
-			nc.network.Metrics.Emit(
+			nc.metrics.Emit(
 				metrics.Error(err),
 				metrics.WithID(nc.id),
 				metrics.Message("Connection failed to read: closing"),
-				metrics.With("network", nc.network.ID),
+				metrics.With("network", nc.nid),
 			)
 			return
 		}
@@ -289,11 +285,11 @@ func (nc *networkConn) readLoop(cm mnet.Client) {
 				bu.WriteString(err.Error())
 			})
 
-			nc.network.Metrics.Emit(
+			nc.metrics.Emit(
 				metrics.Error(err),
 				metrics.WithID(nc.id),
 				metrics.Message("ParseError"),
-				metrics.With("network", nc.network.ID),
+				metrics.With("network", nc.nid),
 			)
 			return
 		}
@@ -548,9 +544,9 @@ func (n *Network) runStream(stream melon.ConnReadWriteCloser) {
 
 			cn := new(networkConn)
 			cn.id = uuid
-			cn.ctx = n.ctx
-			cn.network = n
+			cn.nid = n.ID
 			cn.conn = conn
+			cn.metrics = n.Metrics
 			cn.parser = new(internal.TaggedMessages)
 			cn.localAddr = conn.LocalAddr()
 			cn.remoteAddr = conn.RemoteAddr()
@@ -570,7 +566,6 @@ func (n *Network) runStream(stream melon.ConnReadWriteCloser) {
 			client.RemoteAddrFunc = cn.getRemoteAddr
 
 			cn.worker.Add(1)
-
 			go cn.readLoop(client)
 
 			n.cu.Lock()
@@ -581,6 +576,10 @@ func (n *Network) runStream(stream melon.ConnReadWriteCloser) {
 			if err := n.Handler(client); err != nil {
 				client.Close()
 			}
+
+			n.cu.Lock()
+			delete(n.clients, uuid)
+			n.cu.Unlock()
 		}(newConn)
 	}
 }

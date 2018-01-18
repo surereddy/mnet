@@ -1,15 +1,17 @@
-package mudp
+package msocks
 
 import (
+	"crypto/tls"
 	"errors"
 	"net"
+	"strings"
 	"sync/atomic"
 	"time"
 
-	"bufio"
+	"context"
 
-	"sync"
-
+	"github.com/gobwas/ws"
+	"github.com/gobwas/ws/wsutil"
 	"github.com/influx6/faux/metrics"
 	"github.com/influx6/faux/netutils"
 	"github.com/influx6/mnet"
@@ -17,19 +19,25 @@ import (
 	uuid "github.com/satori/go.uuid"
 )
 
-// errors ..
 var (
-	ErrExpectedUDPConn = errors.New("net.Conn returned is not a *net.UDPConn")
+	wsClientState = ws.StateClientSide
+	wsReadBuffer  = 1024
+	wsWriteBuffer = 1024
+)
+
+// errors ...
+var (
+	ErrNoTLSConfig = errors.New("no tls.Config provided")
 )
 
 // ConnectOptions defines a function type used to apply given
 // changes to a *clientNetwork type
-type ConnectOptions func(conn *clientConn)
+type ConnectOptions func(conn *socketClient)
 
 // WriteInterval sets the clientNetwork to use the provided value
 // as its write intervals for colasced/batch writing of send data.
 func WriteInterval(dur time.Duration) ConnectOptions {
-	return func(cm *clientConn) {
+	return func(cm *socketClient) {
 		cm.maxDeadline = dur
 	}
 }
@@ -37,7 +45,7 @@ func WriteInterval(dur time.Duration) ConnectOptions {
 // MaxBuffer sets the clientNetwork to use the provided value
 // as its maximum buffer size for it's writer.
 func MaxBuffer(buffer int) ConnectOptions {
-	return func(cm *clientConn) {
+	return func(cm *socketClient) {
 		cm.maxWrite = buffer
 	}
 }
@@ -45,31 +53,40 @@ func MaxBuffer(buffer int) ConnectOptions {
 // Metrics sets the metrics instance to be used by the client for
 // logging.
 func Metrics(m metrics.Metrics) ConnectOptions {
-	return func(cm *clientConn) {
+	return func(cm *socketClient) {
 		cm.metrics = m
 	}
 }
 
-// Dialer sets the ws.Dialer to used creating a connection
-// to the server.
-func Dialer(dialer *net.Dialer) ConnectOptions {
-	return func(cm *clientConn) {
-		cm.dialer = dialer
+// TLSConfig sets the giving tls.Config to be used by the returned
+// client.
+func TLSConfig(config *tls.Config) ConnectOptions {
+	return func(cm *socketClient) {
+		cm.secure = true
+		cm.tls = config
 	}
 }
 
 // KeepAliveTimeout sets the client to use given timeout for it's connection net.Dialer
 // keepAliveTimeout.
 func KeepAliveTimeout(dur time.Duration) ConnectOptions {
-	return func(cm *clientConn) {
+	return func(cm *socketClient) {
 		cm.keepTimeout = dur
+	}
+}
+
+// Dialer sets the ws.Dialer to used creating a connection
+// to the server.
+func Dialer(dialer *ws.Dialer) ConnectOptions {
+	return func(cm *socketClient) {
+		cm.dialer = dialer
 	}
 }
 
 // DialTimeout sets the client to use given timeout for it's connection net.Dialer
 // dial timeout.
 func DialTimeout(dur time.Duration) ConnectOptions {
-	return func(cm *clientConn) {
+	return func(cm *socketClient) {
 		cm.dialTimeout = dur
 	}
 }
@@ -77,7 +94,7 @@ func DialTimeout(dur time.Duration) ConnectOptions {
 // NetworkID sets the id used by the client connection for identifying the
 // associated network.
 func NetworkID(id string) ConnectOptions {
-	return func(cm *clientConn) {
+	return func(cm *socketClient) {
 		cm.nid = id
 	}
 }
@@ -92,15 +109,19 @@ func Connect(addr string, ops ...ConnectOptions) (mnet.Client, error) {
 	c.ID = uuid.NewV4().String()
 
 	addr = netutils.GetAddr(addr)
-	//host, _, _ := net.SplitHostPort(addr)
+	host, _, _ := net.SplitHostPort(addr)
 
-	network := new(clientConn)
-	network.netClient = new(netClient)
+	network := new(socketClient)
+	network.socketConn = new(socketConn)
 
 	for _, op := range ops {
 		op(network)
 	}
 
+	network.id = c.ID
+	network.addr = addr
+	network.hostname = host
+	network.header = make([]byte, mnet.HeaderLength)
 	if network.network == "" {
 		network.network = "udp"
 	}
@@ -118,9 +139,10 @@ func Connect(addr string, ops ...ConnectOptions) (mnet.Client, error) {
 	}
 
 	if network.dialer == nil {
-		network.dialer = &net.Dialer{
-			Timeout:   network.dialTimeout,
-			KeepAlive: network.keepTimeout,
+		network.dialer = &ws.Dialer{
+			Timeout:         network.dialTimeout,
+			ReadBufferSize:  wsReadBuffer,
+			WriteBufferSize: wsWriteBuffer,
 		}
 	}
 
@@ -147,139 +169,95 @@ func Connect(addr string, ops ...ConnectOptions) (mnet.Client, error) {
 	return c, nil
 }
 
-// clientConn implements the client side udp connection client.
-// It embeds the netClient and adds extra methods to provide client
-// side behaviours.
-type clientConn struct {
-	*netClient
+type socketClient struct {
+	*socketConn
+	addr        string
+	hostname    string
+	secure      bool
+	tls         *tls.Config
 	network     string
-	dialer      *net.Dialer
-	waiter      sync.WaitGroup
+	dialer      *ws.Dialer
 	keepTimeout time.Duration
 	dialTimeout time.Duration
 	started     int64
 }
 
-func (cn *clientConn) isStarted() bool {
+func (cn *socketClient) isStarted() bool {
 	return atomic.LoadInt64(&cn.started) == 1
 }
 
-func (cn *clientConn) close(jn mnet.Client) error {
+func (cn *socketClient) close(jn mnet.Client) error {
 	if err := cn.isAlive(jn); err != nil {
 		return mnet.ErrAlreadyClosed
 	}
 
-	err := cn.netClient.close(jn)
+	err := cn.socketConn.close(jn)
 	cn.waiter.Wait()
 	return err
 }
 
-func (cn *clientConn) reconnect(jn mnet.Client, addr string) error {
+func (cn *socketClient) reconnect(jn mnet.Client, addr string) error {
 	if err := cn.isAlive(jn); err == nil && cn.isStarted() {
 		return nil
+	}
+
+	if !strings.HasPrefix(addr, "ws://") && !strings.HasPrefix(addr, "wss://") {
+		addr = "ws://" + addr
+	}
+
+	if strings.HasPrefix(addr, "wss://") && cn.tls == nil {
+		return ErrNoTLSConfig
 	}
 
 	defer atomic.StoreInt64(&cn.started, 1)
 
 	cn.waiter.Wait()
 
-	if cn.remoteAddr == nil || (cn.remoteAddr != nil && addr != "") {
-		raddr, err := net.ResolveUDPAddr(cn.network, addr)
-		if err != nil {
-			return err
-		}
+	var conn net.Conn
+	var err error
 
-		cn.remoteAddr = raddr
+	if addr != "" {
+		if conn, err = cn.getConn(addr); err != nil {
+			conn, err = cn.getConn(cn.addr)
+		}
+	} else {
+		conn, err = cn.getConn(cn.addr)
 	}
 
-	conn, err := cn.getConn(jn, cn.remoteAddr)
 	if err != nil {
 		return err
 	}
 
 	cn.localAddr = conn.LocalAddr()
-	cn.mainAddr = cn.localAddr
+	cn.remoteAddr = conn.RemoteAddr()
+
+	reader := wsutil.NewReader(conn, wsClientState)
+	writer := wsutil.NewWriter(conn, wsClientState, ws.OpBinary)
 
 	cn.cu.Lock()
 	cn.conn = conn
 	cn.cu.Unlock()
 
 	cn.bu.Lock()
-	cn.buffer = bufio.NewWriterSize(targetConn{
-		conn:   conn,
-		client: true,
-		target: cn.remoteAddr,
-	}, cn.maxWrite)
+	cn.wsReader = reader
+	cn.wsWriter = writer
 	cn.bu.Unlock()
 
 	cn.waiter.Add(1)
-	go cn.readLoop(conn, jn)
+	go cn.readLoop(conn, reader)
 
 	return nil
 }
 
-func (cn *clientConn) readLoop(conn *net.UDPConn, jn mnet.Client) {
-	defer cn.close(jn)
-	defer cn.waiter.Done()
-
-	incoming := make([]byte, mnet.MinBufferSize, mnet.MaxBufferSize)
-	for {
-		n, addr, err := conn.ReadFrom(incoming)
-		if err != nil {
-			cn.metrics.Send(metrics.Entry{
-				ID:      cn.id,
-				Message: "Connection failed to read: closing",
-				Level:   metrics.ErrorLvl,
-				Field: metrics.Field{
-					"err": err,
-				},
-			})
-			return
-		}
-
-		// if nothing was read, skip.
-		if n == 0 && len(incoming) == 0 {
-			continue
-		}
-
-		if err := cn.handleMessage(incoming[:n], addr); err != nil {
-			cn.metrics.Send(metrics.Entry{
-				ID:      cn.id,
-				Message: "ParseError: failed to parse message",
-				Level:   metrics.ErrorLvl,
-				Field: metrics.Field{
-					"err":  err,
-					"data": string(incoming[:n]),
-				},
-			})
-			return
-		}
-
-		atomic.AddInt64(&cn.totalRead, int64(n))
-
-		// Lets shrink buffer abit within area.
-		if n == len(incoming) && n < mnet.MaxBufferSize {
-			incoming = incoming[0 : mnet.MinBufferSize*2]
-		}
-
-		if n < len(incoming)/2 && len(incoming) > mnet.MinBufferSize {
-			incoming = incoming[0 : len(incoming)/2]
-		}
-
-		if n > len(incoming) && len(incoming) > mnet.MinBufferSize && n < mnet.MaxBufferSize {
-			incoming = incoming[0 : mnet.MaxBufferSize/2]
-		}
-	}
-}
-
 // getConn returns net.Conn for giving addr.
-func (cn *clientConn) getConn(_ mnet.Client, addr net.Addr) (*net.UDPConn, error) {
+func (cn *socketClient) getConn(addr string) (net.Conn, error) {
 	lastSleep := mnet.MinTemporarySleep
 
 	var err error
 	var conn net.Conn
+	var hs ws.Handshake
 	for {
-		conn, err = cn.dialer.Dial(cn.network, addr.String())
+		conn, _, hs, err = cn.dialer.Dial(context.Background(), addr)
 		if err != nil {
 			cn.metrics.Emit(
 				metrics.Error(err),
@@ -302,13 +280,6 @@ func (cn *clientConn) getConn(_ mnet.Client, addr net.Addr) (*net.UDPConn, error
 		break
 	}
 
-	if err != nil {
-		return nil, err
-	}
-
-	if udpcon, ok := conn.(*net.UDPConn); ok {
-		return udpcon, nil
-	}
-
-	return nil, ErrExpectedUDPConn
+	cn.handshake = hs
+	return conn, err
 }
