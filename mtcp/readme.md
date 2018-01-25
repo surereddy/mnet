@@ -47,7 +47,7 @@ netw.Handler = func(client mnet.Client) error {
         }
 
 		// Get writer with 5byte space for response.
-		if writer, err := client.Write(5); err == nil {
+		if writer, err := client.Write(7); err == nil {
 			writer.Write("welcome")
 			writer.Close()
 		}
@@ -70,7 +70,7 @@ if err != nil {
 
 // create writer by telling client size of data
 // to be written.
-writer, err := client.Write(10)
+writer, err := client.Write(8)
 if err != nil {
     log.Fatalf(err)
     return

@@ -47,44 +47,38 @@
 		{
 			"checksumSHA1": "SKFbZyS3l8MBHgzLhSdLwu3t0Ts=",
 			"path": "github.com/influx6/faux/metrics",
-			"revision": "6067c0e4c04f22bbe62b832b3c5c05593b6c3f70",
-			"revisionTime": "2018-01-25T09:31:44Z"
+			"revision": "c16965953e587110a36f3810db953698e63e46cd",
+			"revisionTime": "2018-01-25T11:17:31Z"
 		},
 		{
 			"checksumSHA1": "t8UiQtn+4a+g1U8+FUTA8GsnKBg=",
 			"path": "github.com/influx6/faux/metrics/custom",
-			"revision": "6067c0e4c04f22bbe62b832b3c5c05593b6c3f70",
-			"revisionTime": "2018-01-25T09:31:44Z"
+			"revision": "c16965953e587110a36f3810db953698e63e46cd",
+			"revisionTime": "2018-01-25T11:17:31Z"
 		},
 		{
 			"checksumSHA1": "SPZmL8I0gXLZlYLasxzq2yYadg4=",
 			"path": "github.com/influx6/faux/netutils",
-			"revision": "6067c0e4c04f22bbe62b832b3c5c05593b6c3f70",
-			"revisionTime": "2018-01-25T09:31:44Z"
+			"revision": "c16965953e587110a36f3810db953698e63e46cd",
+			"revisionTime": "2018-01-25T11:17:31Z"
 		},
 		{
-			"checksumSHA1": "F4+gpOQxizs2we4NDtmu5ylXN7M=",
-			"path": "github.com/influx6/faux/pools/buffer",
-			"revision": "6067c0e4c04f22bbe62b832b3c5c05593b6c3f70",
-			"revisionTime": "2018-01-25T09:31:44Z"
-		},
-		{
-			"checksumSHA1": "IDjdE7wqHzrC+PIJx21pGZTLP8o=",
+			"checksumSHA1": "LWf0La6SOHZSXoG70jBOe+U9Vu0=",
 			"path": "github.com/influx6/faux/pools/done",
-			"revision": "6067c0e4c04f22bbe62b832b3c5c05593b6c3f70",
-			"revisionTime": "2018-01-25T09:31:44Z"
+			"revision": "c16965953e587110a36f3810db953698e63e46cd",
+			"revisionTime": "2018-01-25T11:17:31Z"
 		},
 		{
 			"checksumSHA1": "3wLtq6AV0Kh6iz2J9RmsWIqdBiM=",
 			"path": "github.com/influx6/faux/pools/seeker",
-			"revision": "6067c0e4c04f22bbe62b832b3c5c05593b6c3f70",
-			"revisionTime": "2018-01-25T09:31:44Z"
+			"revision": "c16965953e587110a36f3810db953698e63e46cd",
+			"revisionTime": "2018-01-25T11:17:31Z"
 		},
 		{
 			"checksumSHA1": "/PE0RGwoNeVkhlVKWxnIt0TgAA4=",
 			"path": "github.com/influx6/faux/tests",
-			"revision": "6067c0e4c04f22bbe62b832b3c5c05593b6c3f70",
-			"revisionTime": "2018-01-25T09:31:44Z"
+			"revision": "c16965953e587110a36f3810db953698e63e46cd",
+			"revisionTime": "2018-01-25T11:17:31Z"
 		},
 		{
 			"checksumSHA1": "834Na7DxP//h7xitMUbPKCeXR80=",
@@ -113,7 +107,7 @@
 			"revisionTime": "2017-03-21T23:07:31Z"
 		},
 		{
-			"checksumSHA1": "gRu2kYXXhEN+A+NpuAuMrjuiud0=",
+			"checksumSHA1": "++MsxaBN30inOcAz7KvFGddE7ic=",
 			"path": "golang.org/x/sys/unix",
 			"revision": "810d7000345868fc619eb81f46307107118f4ae1",
 			"revisionTime": "2018-01-09T14:25:55Z"

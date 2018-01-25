@@ -69,7 +69,7 @@ if err != nil {
 
 // create writer by telling client size of data
 // to be written.
-writer, err := client.Write(10)
+writer, err := client.Write(8)
 if err != nil {
     log.Fatalf(err)
     return

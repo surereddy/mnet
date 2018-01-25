@@ -10,22 +10,21 @@ Below are recently runned benchmarks, see [BenchmarkTests](./benchmark.txt) for 
 goos: darwin
 goarch: amd64
 pkg: github.com/influx6/mnet/mudp
-BenchmarkNoBytesMessages-4    	 3000000	       555 ns/op	  10.79 MB/s	      80 B/op	       2 allocs/op
-Benchmark2BytesMessages-4     	 3000000	       565 ns/op	  14.15 MB/s	      80 B/op	       2 allocs/op
-Benchmark4BytesMessages-4     	 3000000	       552 ns/op	  18.11 MB/s	      80 B/op	       2 allocs/op
-Benchmark8BytesMessages-4     	 3000000	       566 ns/op	  24.70 MB/s	      80 B/op	       2 allocs/op
-Benchmark16BytesMessages-4    	 3000000	       576 ns/op	  38.17 MB/s	      80 B/op	       2 allocs/op
-Benchmark32BytesMessages-4    	 2000000	       542 ns/op	  70.03 MB/s	      80 B/op	       2 allocs/op
-Benchmark64BytesMessages-4    	 3000000	       582 ns/op	 120.22 MB/s	      80 B/op	       2 allocs/op
-Benchmark128BytesMessages-4   	 3000000	       544 ns/op	 246.13 MB/s	      80 B/op	       2 allocs/op
-Benchmark256BytesMessages-4   	 3000000	       597 ns/op	 438.74 MB/s	      80 B/op	       2 allocs/op
-Benchmark1KMessages-4         	 2000000	       589 ns/op	1746.58 MB/s	      80 B/op	       2 allocs/op
-Benchmark4KMessages-4         	 2000000	       751 ns/op	5456.55 MB/s	      80 B/op	       2 allocs/op
-Benchmark8KMessages-4         	 2000000	       809 ns/op	10129.31 MB/s	      80 B/op	       2 allocs/op
-Benchmark16KMessages-4        	 1000000	      1415 ns/op	11582.20 MB/s	      80 B/op	       2 allocs/op
+BenchmarkNoBytesMessages-4    	 3000000	       433 ns/op	  13.85 MB/s	      16 B/op	       1 allocs/op
+Benchmark2BytesMessages-4     	 3000000	       435 ns/op	  18.38 MB/s	      16 B/op	       1 allocs/op
+Benchmark4BytesMessages-4     	 3000000	       442 ns/op	  22.59 MB/s	      16 B/op	       1 allocs/op
+Benchmark8BytesMessages-4     	 3000000	       450 ns/op	  31.05 MB/s	      16 B/op	       1 allocs/op
+Benchmark16BytesMessages-4    	 3000000	       429 ns/op	  51.22 MB/s	      16 B/op	       1 allocs/op
+Benchmark32BytesMessages-4    	 3000000	       446 ns/op	  85.15 MB/s	      16 B/op	       1 allocs/op
+Benchmark64BytesMessages-4    	 3000000	       448 ns/op	 156.16 MB/s	      16 B/op	       1 allocs/op
+Benchmark128BytesMessages-4   	 3000000	       445 ns/op	 300.74 MB/s	      16 B/op	       1 allocs/op
+Benchmark256BytesMessages-4   	 3000000	       435 ns/op	 601.86 MB/s	      16 B/op	       1 allocs/op
+Benchmark1KMessages-4         	 3000000	       439 ns/op	2345.05 MB/s	      16 B/op	       1 allocs/op
+Benchmark4KMessages-4         	 3000000	       455 ns/op	9001.28 MB/s	      16 B/op	       1 allocs/op
+Benchmark8KMessages-4         	 3000000	       466 ns/op	17580.83 MB/s	      16 B/op	       1 allocs/op
+Benchmark16KMessages-4        	 3000000	       460 ns/op	35576.56 MB/s	      16 B/op	       1 allocs/op
 PASS
-ok  	github.com/influx6/mnet/mudp	28.212s
-
+ok  	github.com/influx6/mnet/mudp	23.583
 ```
 
 ## Examples
