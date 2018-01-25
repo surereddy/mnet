@@ -17,7 +17,6 @@ import (
 
 	"github.com/influx6/faux/metrics"
 	"github.com/influx6/faux/netutils"
-	"github.com/influx6/faux/pools/buffer"
 	"github.com/influx6/faux/pools/done"
 	"github.com/influx6/melon"
 	"github.com/influx6/mnet"
@@ -49,7 +48,7 @@ type networkConn struct {
 	totalReadMsgs  int64
 	closed         int64
 
-	sos    *buffer.GuardedBuffer
+	sos    *guardedBuffer
 	parser *internal.TaggedMessages
 
 	mu   sync.RWMutex
@@ -553,7 +552,7 @@ func (n *Network) runStream(stream melon.ConnReadWriteCloser) {
 			cn.maxWrite = n.ClientMaxWriteSize
 			cn.maxDeadline = n.ClientMaxWriteDeadline
 			cn.buffWriter = bufio.NewWriterSize(conn, n.ClientMaxWriteSize)
-			cn.sos = buffer.NewGuardedBuffer(bytes.NewBuffer(make([]byte, 0, 512)))
+			cn.sos = newGuardedBuffer(512)
 
 			client.LiveFunc = cn.isLive
 			client.ReaderFunc = cn.read
@@ -582,4 +581,21 @@ func (n *Network) runStream(stream melon.ConnReadWriteCloser) {
 			n.cu.Unlock()
 		}(newConn)
 	}
+}
+
+type guardedBuffer struct {
+	ml sync.Mutex
+	bu *bytes.Buffer
+}
+
+func newGuardedBuffer(size int) *guardedBuffer {
+	return &guardedBuffer{
+		bu: bytes.NewBuffer(make([]byte, 0, size)),
+	}
+}
+
+func (gb *guardedBuffer) Do(b func(*bytes.Buffer)) {
+	gb.ml.Lock()
+	defer gb.ml.Unlock()
+	b(gb.bu)
 }
